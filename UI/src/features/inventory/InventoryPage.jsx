@@ -408,7 +408,7 @@ export default function InventoryPage() {
 
       {/* ══ Edit Item Modal ═══════════════════════════════════════ */}
       {editItem && (
-        <div className={styles.modalOverlay} onClick={() => setEditItem(null)}>
+        <div className={styles.modalOverlay} /*onClick={() => setEditItem(null)}*/>
           <div className={styles.modalCard} onClick={e => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>Edit Item</h2>
             <form onSubmit={handleEditSubmit}>

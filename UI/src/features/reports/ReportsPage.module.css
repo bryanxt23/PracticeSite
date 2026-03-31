@@ -77,7 +77,7 @@
 .tabsRow {
   display: flex;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   flex-shrink: 0;
 }
 
@@ -116,6 +116,167 @@
 .tabCountActive {
   background: rgba(255,255,255,0.3);
   color: #fff;
+}
+
+/* ── Summary section ────────────────────────────────────────────── */
+.summarySection {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+
+/* ── Stat cards ─────────────────────────────────────────────────── */
+.statCards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.statCard {
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(210,195,165,0.5);
+  border-radius: 14px;
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.statIcon {
+  font-size: 15px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.statValue {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: #8a7a60;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ── Summary grid (mini tables) ─────────────────────────────────── */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.summaryCard {
+  background: rgba(255,255,255,0.82);
+  border: 1px solid rgba(210,195,165,0.6);
+  border-radius: 14px;
+  padding: 10px 12px 6px;
+  overflow: hidden;
+}
+
+.summaryTitle {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #5a4a2e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Mini table ─────────────────────────────────────────────────── */
+.miniTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.miniTable thead tr {
+  border-bottom: 1px solid #ece8df;
+}
+
+.miniTable th {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #8a7a60;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 4px 5px;
+  text-align: left;
+}
+
+.miniTable td {
+  padding: 4px 4px;
+  color: #333;
+  border-bottom: 1px solid #f3f0e8;
+  vertical-align: middle;
+}
+
+.miniTable tr:last-child td { border-bottom: none; }
+
+.numCol {
+  text-align: right !important;
+  white-space: nowrap;
+  color: #555 !important;
+  font-weight: 600;
+}
+
+.miniEmpty {
+  color: #bbb;
+  font-style: italic;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.rankBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f0ece4;
+  color: #8a7a60;
+  font-size: 10px;
+  font-weight: 700;
+  margin-right: 5px;
+  flex-shrink: 0;
+}
+
+.buyerRow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.buyerAvatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c9a84c, #e8c96a);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* ── Table card ─────────────────────────────────────────────────── */

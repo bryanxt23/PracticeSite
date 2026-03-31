@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import styles from "./ReportsPage.module.css";
 import API from "../../config";
+import { isAdmin } from "../../utils/permissions";
 const PAGE_SIZE = 15;
 
 const ACTION_COLORS = {
@@ -31,10 +32,33 @@ function fmtTime(iso) {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
+function parseSaleTarget(value) {
+  const label = (value || "").trim();
+  if (!label) return { buyer: "Unknown", item: "Unknown" };
+  const parts = label.split("/").map(p => p.trim()).filter(Boolean);
+  if (parts.length === 0) return { buyer: "Unknown", item: "Unknown" };
+  if (parts.length === 1) return { buyer: "Unknown", item: parts[0] };
+  return { buyer: parts[0] || "Unknown", item: parts.slice(1).join(" / ") || "Unknown" };
+}
+
+const fmt = n => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+function StatCard({ icon, label, value, accent }) {
+  return (
+    <div className={styles.statCard} style={accent ? { borderTop: `3px solid ${accent}` } : {}}>
+      <span className={styles.statIcon}>{icon}</span>
+      <div className={styles.statValue}>{value}</div>
+      <div className={styles.statLabel}>{label}</div>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState("Sales");
   const [salesLogs, setSalesLogs]         = useState([]);
   const [inventoryLogs, setInventoryLogs] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [sales, setSales]                 = useState([]);
   const [search, setSearch]               = useState("");
   const [dateFrom, setDateFrom]           = useState("");
   const [dateTo, setDateTo]               = useState("");
@@ -46,6 +70,10 @@ export default function ReportsPage() {
       .then(r => r.json()).then(d => setSalesLogs(Array.isArray(d) ? d : [])).catch(() => {});
     fetch(`${API}/api/activity/report?category=INVENTORY`)
       .then(r => r.json()).then(d => setInventoryLogs(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch(`${API}/api/inventory`)
+      .then(r => r.json()).then(d => setInventoryItems(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch(`${API}/api/sales`)
+      .then(r => r.json()).then(d => setSales(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   const rawLogs = activeTab === "Sales" ? salesLogs : inventoryLogs;
@@ -55,6 +83,74 @@ export default function ReportsPage() {
     return Array.from(set).sort();
   }, [rawLogs]);
 
+  // ── Sales summary stats ────────────────────────────────────────────
+  const salesStats = useMemo(() => {
+    const total     = sales.reduce((s, l) => s + (l.totalPrice || 0), 0);
+    const paid      = sales.reduce((s, l) => s + ((l.totalPrice || 0) - (l.remainingBalance || 0)), 0);
+    const remaining = sales.reduce((s, l) => s + (l.remainingBalance || 0), 0);
+    return { total, count: sales.length, paid, remaining };
+  }, [sales]);
+
+  const topSalesItems = useMemo(() => {
+    const map = {};
+    sales.forEach(l => {
+      const item = (l.item || "Unknown").trim();
+      if (!map[item]) map[item] = { count: 0, total: 0 };
+      map[item].count += 1;
+      map[item].total += (l.totalPrice || 0);
+    });
+    return Object.entries(map)
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 5)
+      .map(([name, data]) => ({ name, count: data.count, total: data.total }));
+  }, [sales]);
+
+  const topSalesBuyers = useMemo(() => {
+    const map = {};
+    sales.forEach(l => {
+      const buyer = (l.customerName || "Unknown").trim();
+      if (!map[buyer]) map[buyer] = { count: 0, total: 0 };
+      map[buyer].count += 1;
+      map[buyer].total += (l.totalPrice || 0);
+    });
+    return Object.entries(map)
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 5)
+      .map(([name, data]) => ({ name, count: data.count, total: data.total }));
+  }, [sales]);
+
+  // ── Inventory summary stats ────────────────────────────────────────
+  const invStats = useMemo(() => {
+    const total    = inventoryItems.length;
+    const inStock  = inventoryItems.filter(i => i.status === "In Stock").length;
+    const lowStock = inventoryItems.filter(i => (i.quantity || 0) <= 5 || i.status === "Out of Stock").length;
+    const value    = inventoryItems.reduce((s, i) => s + (i.sellingPrice || i.price || 0) * (i.quantity || 0), 0);
+    return { total, inStock, lowStock, value };
+  }, [inventoryItems]);
+
+  const lowStockItems = useMemo(() => {
+    return inventoryItems
+      .filter(i => (i.quantity || 0) <= 5 || i.status === "Out of Stock")
+      .sort((a, b) => (a.quantity || 0) - (b.quantity || 0))
+      .slice(0, 5);
+  }, [inventoryItems]);
+
+  const topSuppliers = useMemo(() => {
+    const stats = {};
+    inventoryItems.forEach(item => {
+      const supplier = (item.supplier || "Unknown Supplier").trim() || "Unknown Supplier";
+      const qty = Number(item.quantity || 0);
+      if (!stats[supplier]) stats[supplier] = { count: 0, quantity: 0 };
+      stats[supplier].count += 1;
+      stats[supplier].quantity += qty;
+    });
+    return Object.entries(stats)
+      .map(([supplier, data]) => ({ supplier, count: data.count, quantity: data.quantity }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5);
+  }, [inventoryItems]);
+
+  // ── Activity log filtering ─────────────────────────────────────────
   const filtered = useMemo(() => {
     return rawLogs.filter(log => {
       if (search) {
@@ -130,7 +226,158 @@ export default function ReportsPage() {
             ))}
           </div>
 
-          {/* Table */}
+          {/* ── Summary section ─────────────────────────────────── */}
+          <div className={styles.summarySection}>
+
+            {/* Stat cards */}
+            <div className={styles.statCards}>
+              {activeTab === "Sales" ? (
+                <>
+                  <StatCard icon="💰" label="Total Sales" value={`₱${fmt(salesStats.total)}`} accent="#c9a84c" />
+                  <StatCard icon="📋" label="Transactions" value={salesStats.count} accent="#7cab7f" />
+                  <StatCard icon="✓" label="Paid" value={`₱${fmt(salesStats.paid)}`} accent="#9fc39d" />
+                  <StatCard icon="⏳" label="Remaining" value={`₱${fmt(salesStats.remaining)}`} accent="#ef8767" />
+                </>
+              ) : (
+                <>
+                  <StatCard icon="📦" label="Total Products" value={invStats.total} accent="#c9a84c" />
+                  <StatCard icon="✓" label="In Stock" value={invStats.inStock} accent="#7cab7f" />
+                  <StatCard icon="⚠" label="Low Stock" value={invStats.lowStock} accent="#f0c247" />
+                  <StatCard icon="💵" label="Inventory Value" value={`₱${fmt(invStats.value)}`} accent="#9b8ec4" />
+                </>
+              )}
+            </div>
+
+            {/* Mini summary tables */}
+            <div className={styles.summaryGrid}>
+              {activeTab === "Sales" ? (
+                <>
+                  {/* Top Selling Items */}
+                  <div className={styles.summaryCard}>
+                    <div className={styles.summaryTitle}>Top Selling Items</div>
+                    <table className={styles.miniTable}>
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th className={styles.numCol}>Sales</th>
+                          <th className={styles.numCol}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topSalesItems.length === 0 && (
+                          <tr><td colSpan={3} className={styles.miniEmpty}>No sales yet</td></tr>
+                        )}
+                        {topSalesItems.map((item, i) => (
+                          <tr key={item.name}>
+                            <td><span className={styles.rankBadge}>{i + 1}</span>{item.name}</td>
+                            <td className={styles.numCol}>{item.count}</td>
+                            <td className={styles.numCol}>₱{fmt(item.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Top Buyers */}
+                  <div className={styles.summaryCard}>
+                    <div className={styles.summaryTitle}>Top Buyers</div>
+                    <table className={styles.miniTable}>
+                      <thead>
+                        <tr>
+                          <th>Buyer</th>
+                          <th className={styles.numCol}>Orders</th>
+                          <th className={styles.numCol}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topSalesBuyers.length === 0 && (
+                          <tr><td colSpan={3} className={styles.miniEmpty}>No buyers yet</td></tr>
+                        )}
+                        {topSalesBuyers.map((buyer, i) => (
+                          <tr key={buyer.name}>
+                            <td>
+                              <div className={styles.buyerRow}>
+                                <span className={styles.buyerAvatar}>{(buyer.name || "?")[0].toUpperCase()}</span>
+                                <span className={styles.rankBadge}>{i + 1}</span>
+                                {buyer.name}
+                              </div>
+                            </td>
+                            <td className={styles.numCol}>{buyer.count}</td>
+                            <td className={styles.numCol}>₱{fmt(buyer.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Low Stock Items */}
+                  <div className={styles.summaryCard}>
+                    <div className={styles.summaryTitle}>Low Stock Items</div>
+                    <table className={styles.miniTable}>
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th className={styles.numCol}>Qty</th>
+                          <th className={styles.numCol}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lowStockItems.length === 0 && (
+                          <tr><td colSpan={3} className={styles.miniEmpty}>No low stock items</td></tr>
+                        )}
+                        {lowStockItems.map(item => (
+                          <tr key={item.id || item.name}>
+                            <td>{item.name}</td>
+                            <td className={styles.numCol}>{item.quantity ?? 0}</td>
+                            <td className={styles.numCol}>
+                              <span className={styles.statusBadge}
+                                style={item.status === "Out of Stock"
+                                  ? { background: "#fee2e2", color: "#991b1b" }
+                                  : { background: "#fef3c7", color: "#92400e" }}>
+                                {item.status === "Out of Stock" ? "Out" : "Low"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Top Suppliers — admin only */}
+                  {isAdmin() && (
+                    <div className={styles.summaryCard}>
+                      <div className={styles.summaryTitle}>Top Suppliers</div>
+                      <table className={styles.miniTable}>
+                        <thead>
+                          <tr>
+                            <th>Supplier</th>
+                            <th className={styles.numCol}>Items</th>
+                            <th className={styles.numCol}>Qty</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {topSuppliers.length === 0 && (
+                            <tr><td colSpan={3} className={styles.miniEmpty}>No suppliers yet</td></tr>
+                          )}
+                          {topSuppliers.map((s, i) => (
+                            <tr key={s.supplier}>
+                              <td><span className={styles.rankBadge}>{i + 1}</span>{s.supplier}</td>
+                              <td className={styles.numCol}>{s.count}</td>
+                              <td className={styles.numCol}>{s.quantity}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ── Activity Log Table ──────────────────────────────── */}
           <div className={styles.tableCard}>
             <div className={styles.tableHeader}>
               <div className={styles.colUser}>User</div>
