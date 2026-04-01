@@ -14,7 +14,6 @@ import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/sales")
-@CrossOrigin(origins = "http://localhost:3000")
 public class SalesController {
 
     private final SalesLoanRepository repo;

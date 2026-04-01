@@ -64,6 +64,25 @@
 
 .searchIcon { font-size: 16px; color: #999; }
 
+.exportBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 36px;
+  background: #c9a84c;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.exportBtn:hover { background: #b8963e; }
+
 .searchInput {
   border: none;
   background: transparent;

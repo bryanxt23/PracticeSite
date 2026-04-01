@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import styles from "./ReportsPage.module.css";
 import API from "../../config";
 import { isAdmin } from "../../utils/permissions";
+import * as XLSX from "xlsx";
 const PAGE_SIZE = 15;
 
 const ACTION_COLORS = {
@@ -42,6 +43,90 @@ function parseSaleTarget(value) {
 }
 
 const fmt = n => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+function makeSheet(rows, columns) {
+  return XLSX.utils.json_to_sheet(
+    rows.map(row =>
+      Object.fromEntries(columns.map(({ key, label }) => [label, row[key] ?? ""]))
+    )
+  );
+}
+
+function exportSalesExcel(sales) {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1 — all transactions sorted highest to lowest
+  const sorted = [...sales].sort((a, b) => (b.totalPrice || 0) - (a.totalPrice || 0));
+  const txSheet = makeSheet(sorted, [
+    { key: "customerName",     label: "Customer Name" },
+    { key: "facebookName",     label: "Facebook Name" },
+    { key: "mobileNumber",     label: "Mobile Number" },
+    { key: "item",             label: "Item" },
+    { key: "totalPrice",       label: "Total Price" },
+    { key: "remainingBalance", label: "Remaining Balance" },
+    { key: "monthsToPay",      label: "Months to Pay" },
+    { key: "dueDate",          label: "Due Date" },
+    { key: "purchaseDate",     label: "Purchase Date" },
+    { key: "status",           label: "Status" },
+  ]);
+  XLSX.utils.book_append_sheet(wb, txSheet, "All Transactions");
+
+  // Sheet 2 — items ranked highest to lowest by total sales amount
+  const itemMap = {};
+  sales.forEach(l => {
+    const item = (l.item || "Unknown").trim();
+    if (!itemMap[item]) itemMap[item] = { totalSales: 0, transactions: 0 };
+    itemMap[item].totalSales   += (l.totalPrice || 0);
+    itemMap[item].transactions += 1;
+  });
+  const ranked = Object.entries(itemMap)
+    .sort((a, b) => b[1].totalSales - a[1].totalSales)
+    .map(([item, d], i) => ({
+      Rank: i + 1,
+      Item: item,
+      Transactions: d.transactions,
+      "Total Sales (₱)": d.totalSales,
+    }));
+  const rankSheet = XLSX.utils.json_to_sheet(ranked);
+  XLSX.utils.book_append_sheet(wb, rankSheet, "Items Ranking");
+
+  XLSX.writeFile(wb, "sales_report.xlsx");
+}
+
+function exportInventoryExcel(inventoryItems, adminView) {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1 — all items sorted highest to lowest quantity
+  const sorted = [...inventoryItems].sort((a, b) => (b.quantity || 0) - (a.quantity || 0));
+  const cols = [
+    { key: "name",         label: "Item Name" },
+    { key: "category",     label: "Category" },
+    { key: "status",       label: "Status" },
+    { key: "quantity",     label: "Quantity" },
+    { key: "price",        label: "Cost Price" },
+    { key: "sellingPrice", label: "Selling Price" },
+    ...(adminView ? [{ key: "supplier", label: "Supplier" }] : []),
+  ];
+  XLSX.utils.book_append_sheet(wb, makeSheet(sorted, cols), "All Items");
+
+  // Sheet 2 — items ranked highest to lowest by quantity
+  const ranked = [...inventoryItems]
+    .sort((a, b) => (b.quantity || 0) - (a.quantity || 0))
+    .map((item, i) => ({
+      Rank: i + 1,
+      "Item Name": item.name || "",
+      Category: item.category || "",
+      Status: item.status || "",
+      Quantity: item.quantity ?? 0,
+      "Selling Price (₱)": item.sellingPrice || item.price || 0,
+      "Stock Value (₱)": (item.sellingPrice || item.price || 0) * (item.quantity || 0),
+      ...(adminView ? { Supplier: item.supplier || "" } : {}),
+    }));
+  const rankSheet = XLSX.utils.json_to_sheet(ranked);
+  XLSX.utils.book_append_sheet(wb, rankSheet, "Stock Ranking");
+
+  XLSX.writeFile(wb, "inventory_report.xlsx");
+}
 
 function StatCard({ icon, label, value, accent }) {
   return (
@@ -207,6 +292,18 @@ export default function ReportsPage() {
                   onChange={e => { setSearch(e.target.value); setPage(0); }}
                 />
               </div>
+              <button
+                className={styles.exportBtn}
+                onClick={() => {
+                  if (activeTab === "Sales") {
+                    exportSalesExcel(sales);
+                  } else {
+                    exportInventoryExcel(inventoryItems, isAdmin());
+                  }
+                }}
+              >
+                ⬇ Export Excel
+              </button>
             </div>
           </div>
 

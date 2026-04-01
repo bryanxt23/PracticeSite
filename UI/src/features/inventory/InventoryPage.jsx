@@ -4,6 +4,9 @@ import { isAdmin, canAddInventory, canEditInventory, canDeleteInventory, canMana
 
 import API from "../../config";
 
+const CLOUDINARY_CLOUD_NAME   = "dm8tng6rp";
+const CLOUDINARY_UPLOAD_PRESET = "inventory_upload";
+
 function getUser() {
   try { return JSON.parse(sessionStorage.getItem("user") || localStorage.getItem("user") || "null"); }
   catch { return null; }
@@ -51,15 +54,34 @@ export default function InventoryPage() {
   // lightbox
   const [lightboxImg, setLightboxImg]       = useState(null);
 
+  // image upload state
+  const [addImgUploading,  setAddImgUploading]  = useState(false);
+  const [editImgUploading, setEditImgUploading] = useState(false);
+
   // image file refs
   const addImgRef  = useRef(null);
   const editImgRef = useRef(null);
 
-  const readImageFile = (file, cb) => {
+  const uploadImageFile = async (file, cb, setUploading) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => cb(e.target.result);
-    reader.readAsDataURL(file);
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("folder", "inventory");
+    try {
+      const res  = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.secure_url) {
+        cb(data.secure_url);
+      } else {
+        alert("Image upload failed: " + (data.error?.message || "Unknown error"));
+      }
+    } catch {
+      alert("Image upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   // ── Fetch data ─────────────────────────────────────────────────
@@ -392,14 +414,15 @@ export default function InventoryPage() {
                       : <div className={styles.imgPickerPlaceholder}><span className={styles.imgPickerIcon}>📷</span><span>Click to choose photo</span></div>
                     }
                     <input ref={addImgRef} type="file" accept="image/*" style={{ display:"none" }}
-                      onChange={e => readImageFile(e.target.files[0], base64 => setForm(f => ({ ...f, image: base64 })))} />
+                      onChange={e => uploadImageFile(e.target.files[0], url => setForm(f => ({ ...f, image: url })), setAddImgUploading)} />
                   </label>
-                  {form.image && <button type="button" className={styles.imgClearBtn} onClick={() => { setForm(f=>({...f,image:""})); if(addImgRef.current) addImgRef.current.value=""; }}>Remove Photo</button>}
+                  {addImgUploading && <span className={styles.imgUploadingMsg}>Uploading...</span>}
+                  {form.image && !addImgUploading && <button type="button" className={styles.imgClearBtn} onClick={() => { setForm(f=>({...f,image:""})); if(addImgRef.current) addImgRef.current.value=""; }}>Remove Photo</button>}
                 </div>
               </div>
               <div className={styles.formActions}>
                 <button type="button" className={styles.cancelBtn} onClick={() => { setShowModal(false); setForm(EMPTY_FORM); setFormError(""); }}>Cancel</button>
-                <button type="submit" className={styles.submitBtn} disabled={submitting}>{submitting ? "Saving..." : "+ Add Item"}</button>
+                <button type="submit" className={styles.submitBtn} disabled={submitting || addImgUploading}>{submitting ? "Saving..." : "+ Add Item"}</button>
               </div>
             </form>
           </div>
@@ -457,14 +480,15 @@ export default function InventoryPage() {
                       : <div className={styles.imgPickerPlaceholder}><span className={styles.imgPickerIcon}>📷</span><span>Click to choose photo</span></div>
                     }
                     <input ref={editImgRef} type="file" accept="image/*" style={{ display:"none" }}
-                      onChange={e => readImageFile(e.target.files[0], base64 => setEditForm(f => ({ ...f, image: base64 })))} />
+                      onChange={e => uploadImageFile(e.target.files[0], url => setEditForm(f => ({ ...f, image: url })), setEditImgUploading)} />
                   </label>
-                  {editForm.image && <button type="button" className={styles.imgClearBtn} onClick={() => { setEditForm(f=>({...f,image:""})); if(editImgRef.current) editImgRef.current.value=""; }}>Remove Photo</button>}
+                  {editImgUploading && <span className={styles.imgUploadingMsg}>Uploading...</span>}
+                  {editForm.image && !editImgUploading && <button type="button" className={styles.imgClearBtn} onClick={() => { setEditForm(f=>({...f,image:""})); if(editImgRef.current) editImgRef.current.value=""; }}>Remove Photo</button>}
                 </div>
               </div>
               <div className={styles.formActions}>
                 <button type="button" className={styles.cancelBtn} onClick={() => setEditItem(null)}>Cancel</button>
-                <button type="submit" className={styles.submitBtn} disabled={editSubmitting}>{editSubmitting ? "Saving..." : "Save Changes"}</button>
+                <button type="submit" className={styles.submitBtn} disabled={editSubmitting || editImgUploading}>{editSubmitting ? "Saving..." : "Save Changes"}</button>
               </div>
             </form>
           </div>

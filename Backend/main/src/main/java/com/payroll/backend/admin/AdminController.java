@@ -25,7 +25,6 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/admin")
-@CrossOrigin(origins = "http://localhost:3000", exposedHeaders = "Content-Disposition")
 public class AdminController {
 
     private final SalesLoanRepository salesRepo;

@@ -5,9 +5,13 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './app/App';
 import './styles/globals.css';
 
-// Inject store/client/user headers into every fetch call
+// Inject store/client/user headers into every fetch call (skip external URLs)
 const _nativeFetch = window.fetch.bind(window);
 window.fetch = function (resource, options = {}) {
+  const url = typeof resource === 'string' ? resource : resource?.url ?? '';
+  if (url.startsWith('http') && !url.startsWith(window.location.origin) && !url.includes('localhost:8080')) {
+    return _nativeFetch(resource, options);
+  }
   const headers = new Headers(options.headers || {});
 
   let storeId = null;

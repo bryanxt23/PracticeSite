@@ -6,7 +6,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/activity")
-@CrossOrigin(origins = "http://localhost:3000")
 public class ActivityLogController {
 
     private final ActivityLogRepository repo;

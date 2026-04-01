@@ -12,15 +12,17 @@ import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/inventory")
-@CrossOrigin(origins = "http://localhost:3000")
 public class InventoryController {
 
     private final InventoryItemRepository repo;
     private final ActivityLogRepository activityRepo;
+    private final CloudinaryService cloudinaryService;
 
-    public InventoryController(InventoryItemRepository repo, ActivityLogRepository activityRepo) {
-        this.repo         = repo;
-        this.activityRepo = activityRepo;
+    public InventoryController(InventoryItemRepository repo, ActivityLogRepository activityRepo,
+                                CloudinaryService cloudinaryService) {
+        this.repo             = repo;
+        this.activityRepo     = activityRepo;
+        this.cloudinaryService = cloudinaryService;
     }
 
     private Long sid() { return StoreContextHolder.getStoreId(); }
@@ -88,7 +90,12 @@ public class InventoryController {
         if (updated.getPrice()        != null) item.setPrice(updated.getPrice());
         if (updated.getSupplier()     != null) item.setSupplier(updated.getSupplier());
         if (updated.getSellingPrice() != null) item.setSellingPrice(updated.getSellingPrice());
-        item.setImage(updated.getImage());
+        String oldImage = item.getImage();
+        String newImage = updated.getImage();
+        if (!Objects.equals(oldImage, newImage)) {
+            cloudinaryService.deleteByUrl(oldImage);
+        }
+        item.setImage(newImage);
         InventoryItem saved = repo.save(item);
 
         ActivityLog log = new ActivityLog();
@@ -125,6 +132,7 @@ public class InventoryController {
         log.setDetails("Item removed from inventory");
         activityRepo.save(log);
 
+        cloudinaryService.deleteByUrl(item.getImage());
         repo.deleteById(id);
     }
 
