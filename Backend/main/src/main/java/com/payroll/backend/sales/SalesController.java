@@ -2,6 +2,7 @@ package com.payroll.backend.sales;
 
 import com.payroll.backend.activity.ActivityLog;
 import com.payroll.backend.activity.ActivityLogRepository;
+import com.payroll.backend.inventory.InventoryItemRepository;
 import com.payroll.backend.payment.Payment;
 import com.payroll.backend.payment.PaymentRepository;
 import com.payroll.backend.store.StoreContextHolder;
@@ -19,13 +20,16 @@ public class SalesController {
     private final SalesLoanRepository repo;
     private final ActivityLogRepository activityRepo;
     private final PaymentRepository paymentRepo;
+    private final InventoryItemRepository inventoryRepo;
 
     public SalesController(SalesLoanRepository repo,
                            ActivityLogRepository activityRepo,
-                           PaymentRepository paymentRepo) {
-        this.repo         = repo;
-        this.activityRepo = activityRepo;
-        this.paymentRepo  = paymentRepo;
+                           PaymentRepository paymentRepo,
+                           InventoryItemRepository inventoryRepo) {
+        this.repo          = repo;
+        this.activityRepo  = activityRepo;
+        this.paymentRepo   = paymentRepo;
+        this.inventoryRepo = inventoryRepo;
     }
 
     private Long sid() { return StoreContextHolder.getStoreId(); }
@@ -130,6 +134,32 @@ public class SalesController {
         paymentRepo.save(payment);
 
         boolean fullPaid = newBalance <= 0;
+
+        // Deduct 1 from inventory when fully paid
+        if (fullPaid && saved.getItem() != null) {
+            Long storeId = sid();
+            System.out.print("ASFASJKFASDasdasd");
+            inventoryRepo.findByNameAndStoreId(saved.getItem().trim(), storeId)
+                    .ifPresent(invItem -> {
+                        int newQty = Math.max(0, (invItem.getQuantity() != null ? invItem.getQuantity() : 0) - 1);
+                        invItem.setQuantity(newQty);
+                        if (newQty == 0) invItem.setStatus("Out of Stock");
+                        inventoryRepo.save(invItem);
+
+                        ActivityLog invLog = new ActivityLog();
+                        invLog.setStoreId(storeId);
+                        invLog.setIcon("inventory");
+                        invLog.setEntityName(invItem.getName());
+                        invLog.setAction("stock deducted — sold to " + saved.getCustomerName());
+                        invLog.setUsername(username);
+                        invLog.setCategory("INVENTORY");
+                        invLog.setActionType("Stock Update");
+                        invLog.setTargetName(invItem.getName());
+                        invLog.setDetails("Qty reduced to " + newQty + (newQty == 0 ? " — Out of Stock" : ""));
+                        activityRepo.save(invLog);
+                    });
+        }
+
         ActivityLog log = new ActivityLog();
         log.setStoreId(sid());
         log.setIcon("payment");
