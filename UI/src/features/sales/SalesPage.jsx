@@ -879,9 +879,13 @@ export default function SalesPage() {
                     required
                   >
                     <option value="">— Select an item —</option>
-                    {inventoryItems.map((inv) => (
-                      <option key={inv.id} value={inv.name}>{inv.name}</option>
-                    ))}
+                    {inventoryItems
+                      .filter((inv) => inv.quantity > 0 && inv.status !== "Out of Stock")
+                      .map((inv) => (
+                        <option key={inv.id} value={inv.name}>
+                          {inv.name} ({inv.quantity} left)
+                        </option>
+                      ))}
                   </select>
                 </div>
 
