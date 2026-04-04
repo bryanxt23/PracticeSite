@@ -45,6 +45,21 @@ public class SalesLoan {
     @Column(name = "status")
     private String status = "Active";
 
+    private Integer quantity;
+
+    @Column(name = "payment_terms")
+    private String paymentTerms;
+
+    @Column(name = "sub_total")
+    private Double subTotal;
+
+    private Double discount;
+
+    @Column(name = "down_payment")
+    private Double downPayment;
+
+    private Double profit;
+
     public Long getId() { return id; }
 
     public Long getStoreId() { return storeId; }
@@ -82,4 +97,22 @@ public class SalesLoan {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public Integer getQuantity() { return quantity; }
+    public void setQuantity(Integer quantity) { this.quantity = quantity; }
+
+    public String getPaymentTerms() { return paymentTerms; }
+    public void setPaymentTerms(String paymentTerms) { this.paymentTerms = paymentTerms; }
+
+    public Double getSubTotal() { return subTotal; }
+    public void setSubTotal(Double subTotal) { this.subTotal = subTotal; }
+
+    public Double getDiscount() { return discount; }
+    public void setDiscount(Double discount) { this.discount = discount; }
+
+    public Double getDownPayment() { return downPayment; }
+    public void setDownPayment(Double downPayment) { this.downPayment = downPayment; }
+
+    public Double getProfit() { return profit; }
+    public void setProfit(Double profit) { this.profit = profit; }
 }

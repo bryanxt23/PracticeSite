@@ -5,7 +5,7 @@ import API_BASE from "../../config";
 
 const PAGE_SIZE = 5;
 const TABS = ["All", "Active", "Paid"];
-const EMPTY_FORM = { customerName: "", facebookName: "", mobileNumber: "", item: "", totalPrice: "", monthsToPay: "", dueDate: "" };
+const EMPTY_FORM = { customerName: "", facebookName: "", mobileNumber: "", item: "", quantity: "1", paymentTerms: "Cash", discount: "0", downPayment: "", monthsToPay: "1", dueDate: "" };
 
 
 function buildPagerPages(page, totalPages) {
@@ -152,12 +152,18 @@ export default function SalesPage() {
       .catch(() => {});
   }, []);
 
-  // ── Auto-calc monthly payment from form fields ─────────────────
-  const computedMonthly = useMemo(() => {
-    const price  = parseFloat(form.totalPrice);
-    const months = parseInt(form.monthsToPay);
-    return price > 0 && months > 0 ? (price / months).toFixed(2) : "";
-  }, [form.totalPrice, form.monthsToPay]);
+  // ── Computed payment fields ────────────────────────────────────
+  const calcQty         = Math.max(1, parseInt(form.quantity) || 1);
+  const calcCost        = (selectedItem?.price        || 0) * calcQty;
+  const calcSubTotal    = (selectedItem?.sellingPrice || 0) * calcQty;
+  const calcDiscount    = Math.max(0, parseFloat(form.discount)    || 0);
+  const calcDownPayment = Math.max(0, parseFloat(form.downPayment) || 0);
+  const calcTotalPayable = Math.max(0, calcSubTotal - calcDiscount);
+  const calcProfit       = calcTotalPayable - calcCost;
+  const calcMonths       = parseInt(form.monthsToPay) || 1;
+  const calcMonthly      = form.paymentTerms === "Cash"
+    ? calcTotalPayable
+    : calcMonths > 0 ? (calcTotalPayable - calcDownPayment) / calcMonths : 0;
 
   // ── Tab filtering ──────────────────────────────────────────────
   // Parse "Apr 26, 2026" → local-time Date (avoids UTC timezone shift bugs)
@@ -352,37 +358,63 @@ export default function SalesPage() {
   };
 
   // ── Add new buyer ──────────────────────────────────────────────
+  // Creates one sale record per unit (quantity × individual items)
   const handleSubmit = (e) => {
     e.preventDefault();
     setSubmitting(true);
 
     const dueDate = form.dueDate ? fromInputDate(form.dueDate) : fromInputDate(defaultDueDateInput());
 
-    const body = {
+    // Per-item values (discount is split evenly across all units)
+    const perCost        = selectedItem?.price        || 0;
+    const perSubTotal    = selectedItem?.sellingPrice || 0;
+    const perDiscount    = calcQty > 0 ? calcDiscount / calcQty : 0;
+    const perTotalPayable = Math.max(0, perSubTotal - perDiscount);
+    const perProfit      = perTotalPayable - perCost;
+    const perDownPayment = form.paymentTerms === "Layaway" && calcQty > 0 ? calcDownPayment / calcQty : 0;
+    const perMonthly     = form.paymentTerms === "Cash"
+      ? perTotalPayable
+      : calcMonths > 0 ? (perTotalPayable - perDownPayment) / calcMonths : 0;
+    const perRemaining   = form.paymentTerms === "Cash"
+      ? perTotalPayable
+      : perTotalPayable - perDownPayment;
+
+    const singleBody = {
       customerName:     form.customerName,
       facebookName:     form.facebookName,
       mobileNumber:     form.mobileNumber,
       item:             form.item,
-      totalPrice:       parseFloat(form.totalPrice),
-      monthsToPay:      parseInt(form.monthsToPay),
-      monthlyPayment:   parseFloat(computedMonthly),
-      remainingBalance: parseFloat(form.totalPrice),
+      quantity:         1,
+      paymentTerms:     form.paymentTerms,
+      subTotal:         perSubTotal,
+      discount:         parseFloat(perDiscount.toFixed(2)),
+      downPayment:      parseFloat(perDownPayment.toFixed(2)),
+      totalPrice:       parseFloat(perTotalPayable.toFixed(2)),
+      monthsToPay:      form.paymentTerms === "Cash" ? 1 : calcMonths,
+      monthlyPayment:   parseFloat(perMonthly.toFixed(2)),
+      remainingBalance: parseFloat(perRemaining.toFixed(2)),
+      profit:           parseFloat(perProfit.toFixed(2)),
       dueDate,
       status: "Active",
     };
 
-    fetch(`${API_BASE}/api/sales`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Username": authUsername() },
-      body: JSON.stringify(body),
-    })
-      .then((r) => r.json())
-      .then((newLoan) => {
-        setLoans((prev) => [...prev, newLoan]);
+    // Fire one POST per unit in parallel
+    Promise.all(
+      Array.from({ length: calcQty }, () =>
+        fetch(`${API_BASE}/api/sales`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Username": authUsername() },
+          body: JSON.stringify(singleBody),
+        }).then(r => r.json())
+      )
+    )
+      .then(newLoans => {
+        setLoans(prev => [...prev, ...newLoans]);
         setShowModal(false);
         setForm(EMPTY_FORM);
+        setSelectedItem(null);
       })
-      .catch((err) => console.error("Error adding buyer:", err))
+      .catch(err => console.error("Error adding buyers:", err))
       .finally(() => setSubmitting(false));
   };
 
@@ -1071,17 +1103,83 @@ export default function SalesPage() {
                   </div>
                 )}
 
-                {field("totalPrice",  "Total Price (₱)", "number", true)}
-                {field("monthsToPay", "Months to Pay",   "number", true)}
+                {/* Quantity */}
                 <div className={styles.formField}>
-                  <label className={styles.formLabel}>Monthly Payment (auto)</label>
-                  <input
-                    type="text"
-                    className={`${styles.formInput} ${styles.formInputReadonly}`}
-                    value={computedMonthly ? `₱ ${parseFloat(computedMonthly).toLocaleString()}` : "—"}
-                    readOnly
-                  />
+                  <label className={styles.formLabel}>Quantity <span className={styles.req}>*</span></label>
+                  <input type="number" min="1" className={styles.formInput} value={form.quantity} required
+                    onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
                 </div>
+
+                {/* Payment Terms */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Payment Terms <span className={styles.req}>*</span></label>
+                  <select className={styles.formInput} value={form.paymentTerms}
+                    onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value, downPayment: "", monthsToPay: "1" }))}>
+                    <option value="Cash">Cash</option>
+                    <option value="Layaway">Layaway</option>
+                  </select>
+                </div>
+
+                {/* Layaway-only: Down Payment + Months to Pay */}
+                {form.paymentTerms === "Layaway" && (<>
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Down Payment (₱) <span className={styles.req}>*</span></label>
+                    <input type="number" min="0" step="0.01" className={styles.formInput} value={form.downPayment} required
+                      onChange={e => setForm(f => ({ ...f, downPayment: e.target.value }))} />
+                  </div>
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Months to Pay <span className={styles.req}>*</span></label>
+                    <select className={styles.formInput} value={form.monthsToPay}
+                      onChange={e => setForm(f => ({ ...f, monthsToPay: e.target.value }))}>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                        <option key={m} value={m}>{m} {m === 1 ? "month" : "months"}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>)}
+
+                {/* Cost */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Cost (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    value={selectedItem ? `₱ ${calcCost.toLocaleString()}` : "—"} readOnly />
+                </div>
+                {/* Sub Total */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Sub Total (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    value={selectedItem ? `₱ ${calcSubTotal.toLocaleString()}` : "—"} readOnly />
+                </div>
+                {/* Discount */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Discount (₱)</label>
+                  <input type="number" min="0" step="0.01" className={styles.formInput} value={form.discount}
+                    onChange={e => setForm(f => ({ ...f, discount: e.target.value }))} />
+                </div>
+                {/* Total Payable */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Total Payable (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    value={selectedItem ? `₱ ${calcTotalPayable.toLocaleString()}` : "—"} readOnly />
+                </div>
+                {/* Profit */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Profit (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    style={{ color: calcProfit >= 0 ? "#4a8a50" : "#e05a3a" }}
+                    value={selectedItem ? `₱ ${calcProfit.toLocaleString()}` : "—"} readOnly />
+                </div>
+
+                {/* Layaway-only: Monthly Payment */}
+                {form.paymentTerms === "Layaway" && (
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Monthly Payment (auto)</label>
+                    <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                      value={selectedItem && calcMonths > 0 ? `₱ ${calcMonthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"} readOnly />
+                  </div>
+                )}
+
+                {/* Due Date */}
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Due Date <span className={styles.req}>*</span></label>
                   <input type="date" className={styles.formInput}
@@ -1091,7 +1189,7 @@ export default function SalesPage() {
               </div>
               <div className={styles.formActions}>
                 <button type="button" className={styles.cancelBtn} onClick={closeModal}>Cancel</button>
-                <button type="submit" className={styles.submitBtn} disabled={submitting || !computedMonthly}>
+                <button type="submit" className={styles.submitBtn} disabled={submitting || !selectedItem || calcTotalPayable <= 0}>
                   {submitting ? "Saving..." : "+ Add Buyer"}
                 </button>
               </div>
