@@ -121,6 +121,10 @@ export default function SalesPage() {
   const [showItemPicker, setShowItemPicker] = useState(false);   // which form: "add" | "addProduct" | "edit"
   const [itemPickerSearch, setItemPickerSearch] = useState("");
   const [itemPickerCategory, setItemPickerCategory] = useState("All");
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const QUICK_ADD_EMPTY = { name: "", category: "", quantity: "", grams: "", supplier: "", price: "", sellingPrice: "" };
+  const [quickAddForm, setQuickAddForm] = useState(QUICK_ADD_EMPTY);
+  const [quickAddSubmitting, setQuickAddSubmitting] = useState(false);
   const [apSubmitting, setApSubmitting]   = useState(false);
   const [dueFilters, setDueFilters]       = useState([]);  // "Today" | "7 days" | "30 days" | "12 months"
   const [searchText, setSearchText]       = useState("");
@@ -295,6 +299,36 @@ export default function SalesPage() {
       setEditForm(f => ({ ...f, item: inv.name }));
     }
     setShowItemPicker(false);
+  };
+
+  const handleQuickAddSubmit = (e) => {
+    e.preventDefault();
+    setQuickAddSubmitting(true);
+    const body = {
+      name:         quickAddForm.name.trim(),
+      category:     quickAddForm.category.trim(),
+      status:       "In Stock",
+      quantity:     parseInt(quickAddForm.quantity) || 0,
+      grams:        quickAddForm.grams !== "" ? parseFloat(quickAddForm.grams) : null,
+      supplier:     quickAddForm.supplier.trim(),
+      price:        parseFloat(quickAddForm.price) || 0,
+      sellingPrice: parseFloat(quickAddForm.sellingPrice) || 0,
+    };
+    fetch(`${API_BASE}/api/inventory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Username": authUsername() },
+      body: JSON.stringify(body),
+    })
+      .then(r => r.json())
+      .then(newItem => {
+        setInventoryItems(prev => [...prev, newItem]);
+        setQuickAddForm(QUICK_ADD_EMPTY);
+        setShowQuickAdd(false);
+        // Auto-select the newly added item
+        selectPickerItem(newItem);
+      })
+      .catch(() => alert("Failed to add item. Please try again."))
+      .finally(() => setQuickAddSubmitting(false));
   };
 
   // ── Map item name → inventory image ────────────────────────────
@@ -728,6 +762,10 @@ export default function SalesPage() {
                   <option key={cat} value={cat}>{cat === "All" ? "Show All" : cat}</option>
                 ))}
               </select>
+              <button type="button" className={styles.quickAddBtn}
+                onClick={() => { setQuickAddForm(QUICK_ADD_EMPTY); setShowQuickAdd(true); }}>
+                ＋ Quick Add Product
+              </button>
             </div>
             <div className={styles.itemPickerList}>
               {filteredPickerItems.length === 0 && (
@@ -753,6 +791,69 @@ export default function SalesPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Quick Add Product Modal ══════════════════════════════ */}
+      {showQuickAdd && (
+        <div className={styles.quickAddOverlay} onClick={() => setShowQuickAdd(false)}>
+          <div className={styles.quickAddCard} onClick={e => e.stopPropagation()}>
+            <div className={styles.itemPickerHeader}>
+              <h3 className={styles.itemPickerTitle}>Quick Add Product</h3>
+              <button className={styles.itemPickerClose} onClick={() => setShowQuickAdd(false)}>✕</button>
+            </div>
+            <form onSubmit={handleQuickAddSubmit}>
+              <div className={styles.quickAddGrid}>
+                <div className={styles.quickAddField} style={{ gridColumn: "1 / -1" }}>
+                  <label className={styles.quickAddLabel}>Item Name <span className={styles.req}>*</span></label>
+                  <input className={styles.quickAddInput} required value={quickAddForm.name}
+                    onChange={e => setQuickAddForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Category <span className={styles.req}>*</span></label>
+                  <input className={styles.quickAddInput} list="qa-cats" required value={quickAddForm.category}
+                    onChange={e => setQuickAddForm(f => ({ ...f, category: e.target.value }))} />
+                  <datalist id="qa-cats">
+                    {inventoryCategories.filter(c => c !== "All").map(c => <option key={c} value={c} />)}
+                  </datalist>
+                </div>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Supplier <span className={styles.req}>*</span></label>
+                  <input className={styles.quickAddInput} required value={quickAddForm.supplier}
+                    onChange={e => setQuickAddForm(f => ({ ...f, supplier: e.target.value }))} />
+                </div>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Quantity <span className={styles.req}>*</span></label>
+                  <input type="number" min="0" className={styles.quickAddInput} required value={quickAddForm.quantity}
+                    onChange={e => setQuickAddForm(f => ({ ...f, quantity: e.target.value }))} />
+                </div>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Grams (g) <span className={styles.req}>*</span></label>
+                  <input type="number" min="0" step="0.01" className={styles.quickAddInput} required value={quickAddForm.grams}
+                    onChange={e => setQuickAddForm(f => ({ ...f, grams: e.target.value }))} />
+                </div>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Cost (₱) <span className={styles.req}>*</span></label>
+                  <input type="number" min="0" step="0.01" className={styles.quickAddInput} required value={quickAddForm.price}
+                    onChange={e => setQuickAddForm(f => ({ ...f, price: e.target.value }))} />
+                </div>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Selling Price (₱) <span className={styles.req}>*</span></label>
+                  <input type="number" min="0" step="0.01" className={styles.quickAddInput} required value={quickAddForm.sellingPrice}
+                    onChange={e => setQuickAddForm(f => ({ ...f, sellingPrice: e.target.value }))} />
+                </div>
+              </div>
+              <div className={styles.quickAddNote}>
+                Item will be saved to Inventory with status "In Stock". You can add photo &amp; notes later from the Inventory page.
+              </div>
+              <div className={styles.formActions}>
+                <button type="button" className={styles.cancelBtn} onClick={() => setShowQuickAdd(false)}>Cancel</button>
+                <button type="submit" className={styles.quickAddSubmitBtn} disabled={quickAddSubmitting}>
+                  {quickAddSubmitting ? "Saving..." : "＋ Add to Inventory"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
