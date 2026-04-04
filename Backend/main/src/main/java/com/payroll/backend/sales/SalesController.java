@@ -116,21 +116,64 @@ public class SalesController {
 
     @PutMapping("/{id}/pay")
     public SalesLoan recordPayment(@PathVariable @NonNull Long id,
+                                   @RequestBody(required = false) java.util.Map<String, Object> body,
                                    @RequestHeader(value = "X-Username", defaultValue = "system") String username) {
         SalesLoan loan = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found: " + id));
 
-        double remaining  = loan.getRemainingBalance() != null ? loan.getRemainingBalance() : 0;
-        double monthly    = loan.getMonthlyPayment()   != null ? loan.getMonthlyPayment()   : 0;
-        double newBalance = Math.max(0, remaining - monthly);
+        double remaining = loan.getRemainingBalance() != null ? loan.getRemainingBalance() : 0;
+        double monthly   = loan.getMonthlyPayment()   != null ? loan.getMonthlyPayment()   : 0;
+
+        // Use entered amount if provided, else default to monthly payment
+        double amount = monthly;
+        String notes  = null;
+        if (body != null) {
+            if (body.get("amount") instanceof Number n) amount = n.doubleValue();
+            if (body.get("notes") instanceof String s && !s.isBlank()) notes = s.trim();
+        }
+        amount = Math.min(amount, remaining); // cannot overpay
+        double newBalance = Math.max(0, remaining - amount);
 
         loan.setRemainingBalance(newBalance);
-        if (newBalance <= 0) loan.setStatus("Paid");
+
+        // Track cumulative paid this month period
+        double alreadyPaidThisMonth = loan.getPaidThisMonth() != null ? loan.getPaidThisMonth() : 0;
+        double totalPaidThisMonth   = alreadyPaidThisMonth + amount;
+
+        if (newBalance <= 0) {
+            loan.setStatus("Paid");
+            loan.setPaidThisMonth(0.0);
+        } else if (totalPaidThisMonth >= monthly && monthly > 0) {
+            // Full monthly payment covered — advance due date and reset counter
+            String currentDue = loan.getDueDate();
+            if (currentDue != null && !currentDue.isBlank()) {
+                try {
+                    java.time.format.DateTimeFormatter fmt =
+                        java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", java.util.Locale.ENGLISH);
+                    java.time.LocalDate nextDue = java.time.LocalDate.parse(currentDue, fmt).plusMonths(1);
+                    loan.setDueDate(nextDue.format(fmt));
+                } catch (Exception ignored) {}
+            }
+            loan.setPaidThisMonth(0.0);
+        } else {
+            // Partial payment — accumulate and keep due date
+            loan.setPaidThisMonth(totalPaidThisMonth);
+        }
+
+        // Append note with date-time stamp
+        if (notes != null) {
+            String dateTimeStr = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a", java.util.Locale.ENGLISH));
+            String entry    = "[" + dateTimeStr + "] ₱" + String.format("%.2f", amount) + " — " + notes;
+            String existing = loan.getPaymentNotes();
+            loan.setPaymentNotes(existing != null && !existing.isBlank() ? existing + "|||" + entry : entry);
+        }
+
         SalesLoan saved = repo.save(loan);
 
         Payment payment = new Payment();
         payment.setStoreId(sid());
-        payment.setAmount(monthly);
+        payment.setAmount(amount);
         paymentRepo.save(payment);
 
         boolean fullPaid = newBalance <= 0;
@@ -164,14 +207,15 @@ public class SalesController {
         log.setStoreId(sid());
         log.setIcon("payment");
         log.setEntityName(saved.getCustomerName());
-        log.setAction("made a payment ₱" + String.format("%.0f", monthly)
+        log.setAction("made a payment ₱" + String.format("%.0f", amount)
                 + (fullPaid ? " — Fully Paid!" : ""));
         log.setUsername(username);
         log.setCategory("SALES");
         log.setActionType("Paid");
         log.setTargetName(saved.getCustomerName() + " / " + saved.getItem());
-        log.setDetails("Payment ₱" + fmtNum(monthly)
-                + (fullPaid ? " — Fully Paid!" : ", Remaining ₱" + fmtNum(newBalance)));
+        log.setDetails("Payment ₱" + fmtNum(amount)
+                + (fullPaid ? " — Fully Paid!" : ", Remaining ₱" + fmtNum(newBalance))
+                + (notes != null ? " | Note: " + notes : ""));
         activityRepo.save(log);
 
         return saved;

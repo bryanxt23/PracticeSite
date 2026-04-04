@@ -253,7 +253,7 @@
 .tableHeader,
 .row {
   display: grid;
-  grid-template-columns: 36px 1.8fr 1.4fr 110px 110px 110px 120px 90px;
+  grid-template-columns: 36px 1.8fr 1.4fr 110px 110px 110px 110px 120px 90px;
   align-items: center;
   column-gap: 10px;
 }
@@ -295,11 +295,14 @@
 
 .colItem    { font-size: 13px; font-weight: 700; color: #1e1e1e; }
 
-.colTotal, .colMonthly, .colBalance {
+.colTotal, .colMonthly, .colBalance, .colPayableMonth {
   font-size: 13px;
   font-weight: 600;
   color: #2e2e2e;
 }
+
+.partialThisMonth { color: #e07a3a; }
+.paidThisMonth    { color: #2a9d8f; font-size: 12px; }
 
 .colPurchased { font-size: 12px; color: #777; }
 
@@ -1162,3 +1165,55 @@ input[type="checkbox"] {
 }
 .quickAddSubmitBtn:hover:not(:disabled) { background: #21867a; }
 .quickAddSubmitBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Payment notes in buyer cell ────────────────────────────────── */
+.buyerNotes {
+  margin-top: 5px;
+  font-size: 11px;
+  color: #888;
+  line-height: 1.5;
+  border-top: 1px dashed #e8e2d6;
+  padding-top: 4px;
+}
+
+/* ── Notes viewer modal ─────────────────────────────────────────── */
+.notesViewCard {
+  background: #fff;
+  border-radius: 20px;
+  width: 460px;
+  max-width: 95vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+
+.notesViewBody {
+  overflow-y: auto;
+  flex: 1;
+  padding: 12px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notesViewEntry {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  background: #fafaf7;
+  border: 1px solid #ede9e0;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #444;
+  line-height: 1.5;
+}
+
+.notesViewIcon { flex-shrink: 0; font-size: 15px; }
+
+/* clickable notes preview in table */
+.buyerNotes { cursor: pointer; }
+.buyerNotes:hover { color: #c8922a; }
+.notesMore { color: #c8922a; font-weight: 600; }

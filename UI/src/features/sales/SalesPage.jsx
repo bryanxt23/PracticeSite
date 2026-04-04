@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import styles from "./SalesPage.module.css";
-import { canAddSales, canEditSales, canDeleteSales, canPaySales } from "../../utils/permissions";
+import { canAddSales, canDeleteSales, canPaySales, isAdmin } from "../../utils/permissions";
 import API_BASE from "../../config";
 
 const PAGE_SIZE = 5;
@@ -109,6 +109,10 @@ export default function SalesPage() {
   const [form, setForm]                   = useState(EMPTY_FORM);
   const [submitting, setSubmitting]       = useState(false);
   const [payingId, setPayingId]           = useState(null);
+  const [payModal, setPayModal]           = useState(null); // loan object when open
+  const [payAmount, setPayAmount]         = useState("");
+  const [payNotes, setPayNotes]           = useState("");
+  const [notesModal, setNotesModal]       = useState(null); // loan object when open
   const [sortCol, setSortCol]             = useState(null);   // "buyer" | "item" | null
   const [sortDir, setSortDir]             = useState("asc");  // "asc" | "desc"
   const [selectedItem, setSelectedItem]   = useState(null);
@@ -348,15 +352,29 @@ export default function SalesPage() {
   }, [inventoryItems]);
 
   // ── Record a payment ───────────────────────────────────────────
-  const handlePay = (id) => {
-    setPayingId(id);
-    fetch(`${API_BASE}/api/sales/${id}/pay`, { method: "PUT", headers: { "X-Username": authUsername() } })
-      .then((r) => r.json())
-      .then((updated) => {
-        setLoans((prev) => prev.map((l) => l.id === updated.id ? updated : l));
+  const openPayModal = (loan) => {
+    setPayModal(loan);
+    const thisMonth = Math.max(0, (loan.monthlyPayment || 0) - (loan.paidThisMonth || 0));
+    setPayAmount(String(thisMonth > 0 ? thisMonth : (loan.monthlyPayment ?? "")));
+    setPayNotes("");
+  };
+
+  const handlePaySubmit = (e) => {
+    e.preventDefault();
+    const loan = payModal;
+    setPayingId(loan.id);
+    fetch(`${API_BASE}/api/sales/${loan.id}/pay`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Username": authUsername() },
+      body: JSON.stringify({ amount: parseFloat(payAmount) || 0, notes: payNotes.trim() }),
+    })
+      .then(r => r.json())
+      .then(updated => {
+        setLoans(prev => prev.map(l => l.id === updated.id ? updated : l));
         fetchPaymentStats();
+        setPayModal(null);
       })
-      .catch((err) => console.error("Error recording payment:", err))
+      .catch(err => console.error("Error recording payment:", err))
       .finally(() => setPayingId(null));
   };
 
@@ -688,6 +706,7 @@ export default function SalesPage() {
               <div className={`${styles.colItem} ${styles.sortableCol}`} onClick={() => handleSort("item")}>Item {sortIcon("item")}</div>
               <div className={`${styles.colTotal} ${styles.sortableCol}`} onClick={() => handleSort("totalPrice")}>Total Price {sortIcon("totalPrice")}</div>
               <div className={`${styles.colMonthly} ${styles.sortableCol}`} onClick={() => handleSort("monthlyPayment")}>Monthly {sortIcon("monthlyPayment")}</div>
+              <div className={styles.colPayableMonth}>This Month</div>
               <div className={`${styles.colBalance} ${styles.sortableCol}`} onClick={() => handleSort("remainingBalance")}>Remaining {sortIcon("remainingBalance")}</div>
               <div className={`${styles.colDue} ${styles.sortableCol}`} onClick={() => handleSort("dueDate")}>Due Date {sortIcon("dueDate")}</div>
               <div className={styles.colAction}></div>
@@ -706,6 +725,12 @@ export default function SalesPage() {
                       <div className={styles.buyerName}>{loan.customerName}</div>
                       {loan.facebookName && <div className={styles.buyerFb}>fb: {loan.facebookName}</div>}
                       {loan.mobileNumber && <div className={styles.buyerMobile}>📱 {loan.mobileNumber}</div>}
+                      {loan.paymentNotes && (
+                        <div className={styles.buyerNotes} onClick={() => setNotesModal(loan)} title="Click to view all notes">
+                          📝 {loan.paymentNotes.split("|||")[0]}
+                          {loan.paymentNotes.split("|||").length > 1 && <span className={styles.notesMore}> +{loan.paymentNotes.split("|||").length - 1} more</span>}
+                        </div>
+                      )}
                     </div>
                     <div className={styles.colItem}>
                       {itemImageMap[loan.item] && (
@@ -721,17 +746,28 @@ export default function SalesPage() {
                     </div>
                     <div className={styles.colTotal}>₱{(loan.totalPrice || 0).toLocaleString()}</div>
                     <div className={styles.colMonthly}>₱{(loan.monthlyPayment || 0).toLocaleString()}</div>
+                    <div className={styles.colPayableMonth}>
+                      {loan.status === "Paid" || loan.paymentTerms === "Cash"
+                        ? "—"
+                        : (() => {
+                            const due = Math.max(0, (loan.monthlyPayment || 0) - (loan.paidThisMonth || 0));
+                            return due === 0
+                              ? <span className={styles.paidThisMonth}>✓ Paid</span>
+                              : <span className={due < (loan.monthlyPayment || 0) ? styles.partialThisMonth : ""}>₱{due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+                          })()
+                      }
+                    </div>
                     <div className={styles.colBalance}>₱{(loan.remainingBalance || 0).toLocaleString()}</div>
                     <div className={styles.colDue}>{loan.dueDate}</div>
                     <div className={styles.colAction}>
-                      {canEditSales()   && <button className={styles.editBtn}   onClick={() => openEdit(loan)}    title="Edit">✎</button>}
+                      {isAdmin()        && <button className={styles.editBtn}   onClick={() => openEdit(loan)}    title="Edit">✎</button>}
                       {canDeleteSales() && <button className={styles.deleteBtn} onClick={() => handleDelete(loan)} title="Delete">🗑</button>}
                       {isPaid ? (
                         <span className={styles.paidBadge}>✓ Paid</span>
                       ) : canPaySales() ? (
                         <button
                           className={styles.payBtn}
-                          onClick={() => handlePay(loan.id)}
+                          onClick={() => openPayModal(loan)}
                           disabled={payingId === loan.id}
                         >
                           {payingId === loan.id ? "..." : "Pay"}
@@ -943,6 +979,83 @@ export default function SalesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Pay Modal ════════════════════════════════════════════ */}
+      {payModal && (
+        <div className={styles.quickAddOverlay} onClick={() => setPayModal(null)}>
+          <div className={styles.quickAddCard} style={{ width: 420 }} onClick={e => e.stopPropagation()}>
+            <div className={styles.itemPickerHeader}>
+              <h3 className={styles.itemPickerTitle}>Record Payment</h3>
+              <button className={styles.itemPickerClose} onClick={() => setPayModal(null)}>✕</button>
+            </div>
+
+            {/* Loan summary */}
+            <div style={{ padding: "8px 24px 0", fontSize: 13, color: "#666" }}>
+              <div><strong style={{ color: "#222" }}>{payModal.customerName}</strong>{payModal.facebookName ? ` · fb: ${payModal.facebookName}` : ""}</div>
+              <div style={{ marginTop: 3 }}>Item: <strong>{payModal.item}</strong></div>
+              <div style={{ marginTop: 3, display:"flex", gap: 16 }}>
+                <span>Monthly: <strong style={{ color:"#2a9d8f" }}>₱{(payModal.monthlyPayment||0).toLocaleString()}</strong></span>
+                <span>Remaining: <strong style={{ color:"#e05a3a" }}>₱{(payModal.remainingBalance||0).toLocaleString()}</strong></span>
+              </div>
+            </div>
+
+            <form onSubmit={handlePaySubmit}>
+              <div className={styles.quickAddGrid} style={{ gridTemplateColumns: "1fr" }}>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Amount to Pay (₱) <span className={styles.req}>*</span></label>
+                  <input type="number" min="0.01" step="0.01"
+                    max={payModal.remainingBalance}
+                    className={styles.quickAddInput} required
+                    value={payAmount}
+                    onChange={e => setPayAmount(e.target.value)} />
+                  <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>
+                    Max: ₱{(payModal.remainingBalance || 0).toLocaleString()}
+                  </div>
+                </div>
+                <div className={styles.quickAddField}>
+                  <label className={styles.quickAddLabel}>Notes <span style={{ color:"#aaa", fontWeight:400 }}>(optional)</span></label>
+                  <textarea className={styles.quickAddInput} rows={3}
+                    style={{ height:"auto", resize:"vertical", padding:"8px 12px" }}
+                    placeholder="e.g. Half payment agreed, rest next month..."
+                    value={payNotes}
+                    onChange={e => setPayNotes(e.target.value)} />
+                </div>
+              </div>
+              <div className={styles.formActions}>
+                <button type="button" className={styles.cancelBtn} onClick={() => setPayModal(null)}>Cancel</button>
+                <button type="submit" className={styles.quickAddSubmitBtn} disabled={payingId === payModal.id}>
+                  {payingId === payModal.id ? "Saving..." : "✓ Confirm Payment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Notes Viewer Modal ═══════════════════════════════════ */}
+      {notesModal && (
+        <div className={styles.quickAddOverlay} onClick={() => setNotesModal(null)}>
+          <div className={styles.notesViewCard} onClick={e => e.stopPropagation()}>
+            <div className={styles.itemPickerHeader}>
+              <div>
+                <h3 className={styles.itemPickerTitle}>Payment Notes</h3>
+                <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
+                  {notesModal.customerName} · {notesModal.item}
+                </div>
+              </div>
+              <button className={styles.itemPickerClose} onClick={() => setNotesModal(null)}>✕</button>
+            </div>
+            <div className={styles.notesViewBody}>
+              {notesModal.paymentNotes.split("|||").map((line, i) => (
+                <div key={i} className={styles.notesViewEntry}>
+                  <span className={styles.notesViewIcon}>📝</span>
+                  <span>{line}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

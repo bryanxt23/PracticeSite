@@ -60,6 +60,12 @@ public class SalesLoan {
 
     private Double profit;
 
+    @Column(name = "payment_notes", columnDefinition = "TEXT")
+    private String paymentNotes;
+
+    @Column(name = "paid_this_month")
+    private Double paidThisMonth;
+
     public Long getId() { return id; }
 
     public Long getStoreId() { return storeId; }
@@ -115,4 +121,10 @@ public class SalesLoan {
 
     public Double getProfit() { return profit; }
     public void setProfit(Double profit) { this.profit = profit; }
+
+    public String getPaymentNotes() { return paymentNotes; }
+    public void setPaymentNotes(String paymentNotes) { this.paymentNotes = paymentNotes; }
+
+    public Double getPaidThisMonth() { return paidThisMonth; }
+    public void setPaidThisMonth(Double paidThisMonth) { this.paidThisMonth = paidThisMonth; }
 }
