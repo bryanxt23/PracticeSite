@@ -118,6 +118,9 @@ export default function SalesPage() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [apForm, setApForm]               = useState({ customerName: "", item: "", totalPrice: "", monthsToPay: "", dueDate: "" });
+  const [showItemPicker, setShowItemPicker] = useState(false);   // which form: "add" | "addProduct" | "edit"
+  const [itemPickerSearch, setItemPickerSearch] = useState("");
+  const [itemPickerCategory, setItemPickerCategory] = useState("All");
   const [apSubmitting, setApSubmitting]   = useState(false);
   const [dueFilters, setDueFilters]       = useState([]);  // "Today" | "7 days" | "30 days" | "12 months"
   const [searchText, setSearchText]       = useState("");
@@ -262,6 +265,36 @@ export default function SalesPage() {
   const sortIcon = (col) => {
     if (sortCol !== col) return <span className={styles.sortIcon}>⇅</span>;
     return <span className={styles.sortIcon}>{sortDir === "asc" ? "↑" : "↓"}</span>;
+  };
+
+  // ── Item picker helpers ────────────────────────────────────────
+  const inventoryCategories = useMemo(() => {
+    const cats = [...new Set(inventoryItems.map(i => i.category).filter(Boolean))].sort();
+    return ["All", ...cats];
+  }, [inventoryItems]);
+
+  const filteredPickerItems = useMemo(() => {
+    return inventoryItems.filter(inv => {
+      const matchCat = itemPickerCategory === "All" || inv.category === itemPickerCategory;
+      const matchSearch = !itemPickerSearch.trim() ||
+        (inv.name || "").toLowerCase().includes(itemPickerSearch.toLowerCase()) ||
+        (inv.category || "").toLowerCase().includes(itemPickerSearch.toLowerCase()) ||
+        (inv.supplier || "").toLowerCase().includes(itemPickerSearch.toLowerCase());
+      return matchCat && matchSearch;
+    });
+  }, [inventoryItems, itemPickerSearch, itemPickerCategory]);
+
+  const selectPickerItem = (inv) => {
+    const autoPrice = String(inv.sellingPrice || inv.price || "");
+    if (showItemPicker === "add") {
+      setSelectedItem(inv);
+      setForm(f => ({ ...f, item: inv.name, totalPrice: autoPrice || f.totalPrice }));
+    } else if (showItemPicker === "addProduct") {
+      setApForm(f => ({ ...f, item: inv.name, totalPrice: autoPrice || f.totalPrice }));
+    } else if (showItemPicker === "edit") {
+      setEditForm(f => ({ ...f, item: inv.name }));
+    }
+    setShowItemPicker(false);
   };
 
   // ── Map item name → inventory image ────────────────────────────
@@ -673,6 +706,57 @@ export default function SalesPage() {
 
       </div>
 
+      {/* ══ Item Picker Popup ════════════════════════════════════ */}
+      {showItemPicker && (
+        <div className={styles.itemPickerOverlay} onClick={() => setShowItemPicker(false)}>
+          <div className={styles.itemPickerCard} onClick={e => e.stopPropagation()}>
+            <div className={styles.itemPickerHeader}>
+              <h3 className={styles.itemPickerTitle}>Choose Product</h3>
+              <button className={styles.itemPickerClose} onClick={() => setShowItemPicker(false)}>✕</button>
+            </div>
+            <div className={styles.itemPickerControls}>
+              <input
+                className={styles.itemPickerSearch}
+                placeholder="Search.."
+                value={itemPickerSearch}
+                onChange={e => setItemPickerSearch(e.target.value)}
+                autoFocus
+              />
+              <select className={styles.itemPickerFilter} value={itemPickerCategory}
+                onChange={e => setItemPickerCategory(e.target.value)}>
+                {inventoryCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat === "All" ? "Show All" : cat}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.itemPickerList}>
+              {filteredPickerItems.length === 0 && (
+                <div className={styles.itemPickerEmpty}>No items found.</div>
+              )}
+              {filteredPickerItems.map(inv => (
+                <div key={inv.id} className={styles.itemPickerItem} onClick={() => selectPickerItem(inv)}>
+                  {inv.image
+                    ? <img src={inv.image} alt={inv.name} className={styles.itemPickerImg} />
+                    : <div className={styles.itemPickerImgPlaceholder}>📦</div>
+                  }
+                  <div className={styles.itemPickerInfo}>
+                    <div className={styles.itemPickerName}>{inv.name}</div>
+                    <div className={styles.itemPickerMeta}>
+                      {inv.category && <span>{inv.category}</span>}
+                      {inv.supplier && <span>Supplier: {inv.supplier}</span>}
+                      {inv.grams != null && <span>{inv.grams}g / pc</span>}
+                      <span className={styles.itemPickerCost}>Cost: {(inv.price || 0).toLocaleString()}</span>
+                      <span className={styles.itemPickerSell}>Sell: {(inv.sellingPrice || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <span className={styles.itemPickerQtyBadge}>{inv.quantity ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ Image Lightbox ════════════════════════════════════════ */}
       {lightboxImg && (
         <div className={styles.lightboxOverlay} onClick={() => setLightboxImg(null)}>
@@ -700,13 +784,13 @@ export default function SalesPage() {
                 ))}
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Item Purchased</label>
-                  <select className={styles.formInput} value={editForm.item}
-                    onChange={e => setEditForm(f => ({ ...f, item: e.target.value }))}>
-                    <option value="">— Select an item —</option>
-                    {inventoryItems.map(inv => (
-                      <option key={inv.id} value={inv.name}>{inv.name}</option>
-                    ))}
-                  </select>
+                  <button type="button" className={styles.itemTriggerBtn}
+                    onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setShowItemPicker("edit"); }}>
+                    {editForm.item
+                      ? <span>{editForm.item}</span>
+                      : <span className={styles.itemTriggerPlaceholder}>— Select an item —</span>}
+                    <span className={styles.itemTriggerArrow}>▼</span>
+                  </button>
                 </div>
                 {/* Item image preview */}
                 {editForm.item && itemImageMap[editForm.item] && (
@@ -790,20 +874,16 @@ export default function SalesPage() {
                   <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`} value={apForm.mobileNumber || ""} readOnly />
                 </div>
 
-                {/* Item dropdown */}
+                {/* Item picker trigger */}
                 <div className={styles.formField} style={{ gridColumn: "1 / -1" }}>
                   <label className={styles.formLabel}>Item Purchased <span className={styles.req}>*</span></label>
-                  <select className={styles.formInput} value={apForm.item} required
-                    onChange={e => {
-                      const inv = inventoryItems.find(i => i.name === e.target.value) || null;
-                      const autoPrice = inv ? (inv.sellingPrice || inv.price || "") : "";
-                      setApForm(f => ({ ...f, item: e.target.value, totalPrice: autoPrice ? String(autoPrice) : f.totalPrice }));
-                    }}>
-                    <option value="">— Select an item —</option>
-                    {inventoryItems.map(inv => (
-                      <option key={inv.id} value={inv.name}>{inv.name}</option>
-                    ))}
-                  </select>
+                  <button type="button" className={styles.itemTriggerBtn}
+                    onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setShowItemPicker("addProduct"); }}>
+                    {apForm.item
+                      ? <span>{apForm.item}</span>
+                      : <span className={styles.itemTriggerPlaceholder}>— Select an item —</span>}
+                    <span className={styles.itemTriggerArrow}>▼</span>
+                  </button>
                 </div>
 
                 {/* Item image preview */}
@@ -864,29 +944,16 @@ export default function SalesPage() {
                 {field("customerName", "Customer Name",  "text",   true)}
                 {field("facebookName", "Facebook Name",  "text",   false)}
                 {field("mobileNumber", "Mobile Number",  "text",   false)}
-                {/* Item Purchased — dropdown from inventory */}
+                {/* Item Purchased — picker popup trigger */}
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Item Purchased <span className={styles.req}>*</span></label>
-                  <select
-                    className={styles.formInput}
-                    value={form.item}
-                    onChange={(e) => {
-                      const inv = inventoryItems.find(i => i.name === e.target.value) || null;
-                      setSelectedItem(inv);
-                      const autoPrice = inv ? (inv.sellingPrice || inv.price || "") : "";
-                      setForm((f) => ({ ...f, item: e.target.value, totalPrice: autoPrice ? String(autoPrice) : f.totalPrice }));
-                    }}
-                    required
-                  >
-                    <option value="">— Select an item —</option>
-                    {inventoryItems
-                      .filter((inv) => inv.quantity > 0 && inv.status !== "Out of Stock")
-                      .map((inv) => (
-                        <option key={inv.id} value={inv.name}>
-                          {inv.name} ({inv.quantity} left)
-                        </option>
-                      ))}
-                  </select>
+                  <button type="button" className={styles.itemTriggerBtn}
+                    onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setShowItemPicker("add"); }}>
+                    {form.item
+                      ? <span>{form.item}</span>
+                      : <span className={styles.itemTriggerPlaceholder}>— Select an item —</span>}
+                    <span className={styles.itemTriggerArrow}>▼</span>
+                  </button>
                 </div>
 
                 {/* Item image preview */}
