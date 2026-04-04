@@ -8,6 +8,9 @@ import InventoryPage from "../features/inventory/InventoryPage";
 import SalesPage from "../features/sales/SalesPage";
 import SettingsPage from "../features/settings/SettingsPage";
 import ReportsPage from "../features/reports/ReportsPage";
+import SalaryPage from "../features/salary/SalaryPage";
+import PeoplePage from "../features/people/PeoplePage";
+import CalendarPage from "../features/calendar/CalendarPage";
 
 function getUser() {
   try {
@@ -47,6 +50,9 @@ export default function App() {
                 <Route path="/inventory" element={<InventoryPage />} />
                 <Route path="/sales"     element={<SalesPage />} />
                 <Route path="/reports"   element={<ReportsPage />} />
+                {/* <Route path="/salary"   element={<SalaryPage />} /> */}
+                {/* <Route path="/people"   element={<PeoplePage />} /> */}
+                {/* <Route path="/calendar" element={<CalendarPage />} /> */}
                 <Route path="/settings"  element={
                   <RequireAdmin><SettingsPage /></RequireAdmin>
                 } />

@@ -48,6 +48,9 @@ public class UserController {
         if (!isAdmin(req)) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
 
         String username = String.valueOf(body.get("username"));
+        if ("admin".equalsIgnoreCase(username)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username 'admin' is reserved");
+        }
         if (userRepo.existsByUsername(username)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
         }

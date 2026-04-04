@@ -113,7 +113,12 @@ export default function SettingsPage() {
   const closeUserModal = () => { setShowUserModal(false); setEditUser(null); setUserForm(EMPTY_USER); setUserError(""); };
 
   const handleSaveUser = (e) => {
-    e.preventDefault(); setUserSaving(true); setUserError("");
+    e.preventDefault();
+    if (!editUser && userForm.username.toLowerCase() === "admin") {
+      setUserError("Username 'admin' is reserved and cannot be created.");
+      return;
+    }
+    setUserSaving(true); setUserError("");
     const url    = editUser ? `${API}/api/users/${editUser.id}` : `${API}/api/users`;
     const method = editUser ? "PUT" : "POST";
     const body   = { ...userForm };

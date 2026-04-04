@@ -5,11 +5,13 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './app/App';
 import './styles/globals.css';
 
-// Inject store/client/user headers into every fetch call (skip external URLs)
+// Inject store/client/user headers into every fetch call (skip truly external URLs like Cloudinary)
+import API_BASE from './config';
 const _nativeFetch = window.fetch.bind(window);
 window.fetch = function (resource, options = {}) {
   const url = typeof resource === 'string' ? resource : resource?.url ?? '';
-  if (url.startsWith('http') && !url.startsWith(window.location.origin) && !url.includes('localhost:8080')) {
+  const isApiCall = url.startsWith(window.location.origin) || url.includes('localhost:8080') || url.startsWith(API_BASE);
+  if (url.startsWith('http') && !isApiCall) {
     return _nativeFetch(resource, options);
   }
   const headers = new Headers(options.headers || {});

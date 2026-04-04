@@ -7,6 +7,9 @@ const tabs = [
   { label: "Inventory", path: "/inventory" },
   { label: "Sales",     path: "/sales" },
   { label: "Reports",   path: "/reports" },
+  // { label: "Salary",    path: "/salary" },
+  // { label: "People",    path: "/people" },
+  // { label: "Calendar",  path: "/calendar" },
 ];
 
 const ALL_STORES = [
