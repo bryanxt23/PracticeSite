@@ -117,7 +117,7 @@ export default function SalesPage() {
   const [editForm, setEditForm]           = useState({});
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const [apForm, setApForm]               = useState({ customerName: "", item: "", totalPrice: "", monthsToPay: "", dueDate: "" });
+  const [apForm, setApForm]               = useState({ customerName: "", item: "", quantity: "1", paymentTerms: "Cash", discount: "0", downPayment: "", monthsToPay: "1", dueDate: "" });
   const [showItemPicker, setShowItemPicker] = useState(false);   // which form: "add" | "addProduct" | "edit"
   const [itemPickerSearch, setItemPickerSearch] = useState("");
   const [itemPickerCategory, setItemPickerCategory] = useState("All");
@@ -432,19 +432,25 @@ export default function SalesPage() {
   }, [loans]);
 
   // ── Add Product (existing customer, new item) ──────────────────
-  const apComputed = useMemo(() => {
-    const price  = parseFloat(apForm.totalPrice);
-    const months = parseInt(apForm.monthsToPay);
-    return price > 0 && months > 0 ? (price / months).toFixed(2) : "";
-  }, [apForm.totalPrice, apForm.monthsToPay]);
-
   const apSelectedItem = useMemo(() =>
     inventoryItems.find(i => i.name === apForm.item) || null,
   [inventoryItems, apForm.item]);
 
+  const apQty         = Math.max(1, parseInt(apForm.quantity) || 1);
+  const apCost        = (apSelectedItem?.price        || 0) * apQty;
+  const apSubTotal    = (apSelectedItem?.sellingPrice || 0) * apQty;
+  const apDiscount    = Math.max(0, parseFloat(apForm.discount)    || 0);
+  const apDownPayment = Math.max(0, parseFloat(apForm.downPayment) || 0);
+  const apTotalPayable = Math.max(0, apSubTotal - apDiscount);
+  const apProfit       = apTotalPayable - apCost;
+  const apMonths       = parseInt(apForm.monthsToPay) || 1;
+  const apMonthly      = apForm.paymentTerms === "Cash"
+    ? apTotalPayable
+    : apMonths > 0 ? (apTotalPayable - apDownPayment) / apMonths : 0;
+
   const closeAddProduct = () => {
     setShowAddProduct(false);
-    setApForm({ customerName: "", item: "", totalPrice: "", monthsToPay: "" });
+    setApForm({ customerName: "", item: "", quantity: "1", paymentTerms: "Cash", discount: "0", downPayment: "", monthsToPay: "1", dueDate: "" });
   };
 
   const handleApSubmit = (e) => {
@@ -452,25 +458,47 @@ export default function SalesPage() {
     setApSubmitting(true);
     const dueDate = apForm.dueDate ? fromInputDate(apForm.dueDate) : fromInputDate(defaultDueDateInput());
     const customer = uniqueCustomers.find(c => c.customerName === apForm.customerName) || {};
-    const body = {
+
+    const perCost         = apSelectedItem?.price        || 0;
+    const perSubTotal     = apSelectedItem?.sellingPrice || 0;
+    const perDiscount     = apQty > 0 ? apDiscount / apQty : 0;
+    const perTotalPayable = Math.max(0, perSubTotal - perDiscount);
+    const perProfit       = perTotalPayable - perCost;
+    const perDownPayment  = apForm.paymentTerms === "Layaway" && apQty > 0 ? apDownPayment / apQty : 0;
+    const perMonthly      = apForm.paymentTerms === "Cash"
+      ? perTotalPayable
+      : apMonths > 0 ? (perTotalPayable - perDownPayment) / apMonths : 0;
+    const perRemaining    = apForm.paymentTerms === "Cash" ? perTotalPayable : perTotalPayable - perDownPayment;
+
+    const singleBody = {
       customerName:     apForm.customerName,
       facebookName:     customer.facebookName || "",
       mobileNumber:     customer.mobileNumber || "",
       item:             apForm.item,
-      totalPrice:       parseFloat(apForm.totalPrice),
-      monthsToPay:      parseInt(apForm.monthsToPay),
-      monthlyPayment:   parseFloat(apComputed),
-      remainingBalance: parseFloat(apForm.totalPrice),
+      quantity:         1,
+      paymentTerms:     apForm.paymentTerms,
+      subTotal:         perSubTotal,
+      discount:         parseFloat(perDiscount.toFixed(2)),
+      downPayment:      parseFloat(perDownPayment.toFixed(2)),
+      totalPrice:       parseFloat(perTotalPayable.toFixed(2)),
+      monthsToPay:      apForm.paymentTerms === "Cash" ? 1 : apMonths,
+      monthlyPayment:   parseFloat(perMonthly.toFixed(2)),
+      remainingBalance: parseFloat(perRemaining.toFixed(2)),
+      profit:           parseFloat(perProfit.toFixed(2)),
       dueDate,
       status: "Active",
     };
-    fetch(`${API_BASE}/api/sales`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Username": authUsername() },
-      body: JSON.stringify(body),
-    })
-      .then(r => r.json())
-      .then(newLoan => { setLoans(prev => [...prev, newLoan]); closeAddProduct(); })
+
+    Promise.all(
+      Array.from({ length: apQty }, () =>
+        fetch(`${API_BASE}/api/sales`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Username": authUsername() },
+          body: JSON.stringify(singleBody),
+        }).then(r => r.json())
+      )
+    )
+      .then(newLoans => { setLoans(prev => [...prev, ...newLoans]); closeAddProduct(); })
       .catch(err => console.error("Error adding product:", err))
       .finally(() => setApSubmitting(false));
   };
@@ -483,10 +511,14 @@ export default function SalesPage() {
       facebookName:     loan.facebookName     || "",
       mobileNumber:     loan.mobileNumber     || "",
       item:             loan.item             || "",
+      paymentTerms:     loan.paymentTerms     || "Cash",
+      discount:         String(loan.discount      ?? "0"),
+      downPayment:      String(loan.downPayment   ?? "0"),
+      monthsToPay:      String(loan.monthsToPay   ?? "1"),
       totalPrice:       String(loan.totalPrice    ?? ""),
-      monthsToPay:      String(loan.monthsToPay   ?? ""),
       monthlyPayment:   String(loan.monthlyPayment ?? ""),
       remainingBalance: String(loan.remainingBalance ?? ""),
+      profit:           String(loan.profit         ?? ""),
       dueDate:          loan.dueDate          || "",
       status:           loan.status           || "Active",
     });
@@ -507,14 +539,20 @@ export default function SalesPage() {
   const handleEditSubmit = (e) => {
     e.preventDefault();
     setEditSubmitting(true);
-    const months = parseInt(editForm.monthsToPay);
-    const price  = parseFloat(editForm.totalPrice);
+    const months  = parseInt(editForm.monthsToPay) || 1;
+    const price   = parseFloat(editForm.totalPrice) || 0;
+    const monthly = editForm.paymentTerms === "Cash"
+      ? price
+      : months > 0 ? parseFloat((price / months).toFixed(2)) : parseFloat(editForm.monthlyPayment);
     const body = {
       ...editForm,
       totalPrice:       price,
-      monthsToPay:      months,
-      monthlyPayment:   months > 0 ? parseFloat((price / months).toFixed(2)) : parseFloat(editForm.monthlyPayment),
+      monthsToPay:      editForm.paymentTerms === "Cash" ? 1 : months,
+      monthlyPayment:   monthly,
       remainingBalance: parseFloat(editForm.remainingBalance),
+      discount:         parseFloat(editForm.discount) || 0,
+      downPayment:      parseFloat(editForm.downPayment) || 0,
+      profit:           parseFloat(editForm.profit) || 0,
     };
     fetch(`${API_BASE}/api/sales/${editLoan.id}`, {
       method: "PUT",
@@ -935,19 +973,67 @@ export default function SalesPage() {
                       title="Click to enlarge" />
                   </div>
                 )}
-                {[
-                  { key: "totalPrice",       label: "Total Price (₱)" },
-                  { key: "monthsToPay",      label: "Months to Pay" },
-                  { key: "monthlyPayment",   label: "Monthly Payment (₱)" },
-                  { key: "remainingBalance", label: "Remaining Balance (₱)" },
-                ].map(({ key, label }) => (
-                  <div key={key} className={styles.formField}>
-                    <label className={styles.formLabel}>{label}</label>
-                    <input type="number" className={styles.formInput}
-                      value={editForm[key] || ""}
-                      onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))} />
+                {/* Payment Terms */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Payment Terms</label>
+                  <select className={styles.formInput} value={editForm.paymentTerms || "Cash"}
+                    onChange={e => setEditForm(f => ({ ...f, paymentTerms: e.target.value, downPayment: "0", monthsToPay: "1" }))}>
+                    <option value="Cash">Cash</option>
+                    <option value="Layaway">Layaway</option>
+                  </select>
+                </div>
+
+                {/* Discount */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Discount (₱)</label>
+                  <input type="number" min="0" step="0.01" className={styles.formInput}
+                    value={editForm.discount || "0"}
+                    onChange={e => setEditForm(f => ({ ...f, discount: e.target.value }))} />
+                </div>
+
+                {/* Layaway-only */}
+                {editForm.paymentTerms === "Layaway" && (<>
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Down Payment (₱)</label>
+                    <input type="number" min="0" step="0.01" className={styles.formInput}
+                      value={editForm.downPayment || "0"}
+                      onChange={e => setEditForm(f => ({ ...f, downPayment: e.target.value }))} />
                   </div>
-                ))}
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Months to Pay</label>
+                    <select className={styles.formInput} value={editForm.monthsToPay || "1"}
+                      onChange={e => setEditForm(f => ({ ...f, monthsToPay: e.target.value }))}>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                        <option key={m} value={m}>{m} {m === 1 ? "month" : "months"}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>)}
+
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Total Payable (₱)</label>
+                  <input type="number" min="0" step="0.01" className={styles.formInput}
+                    value={editForm.totalPrice || ""}
+                    onChange={e => setEditForm(f => ({ ...f, totalPrice: e.target.value }))} />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Monthly Payment (₱)</label>
+                  <input type="number" min="0" step="0.01" className={styles.formInput}
+                    value={editForm.monthlyPayment || ""}
+                    onChange={e => setEditForm(f => ({ ...f, monthlyPayment: e.target.value }))} />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Remaining Balance (₱)</label>
+                  <input type="number" min="0" step="0.01" className={styles.formInput}
+                    value={editForm.remainingBalance || ""}
+                    onChange={e => setEditForm(f => ({ ...f, remainingBalance: e.target.value }))} />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Profit (₱)</label>
+                  <input type="number" step="0.01" className={styles.formInput}
+                    value={editForm.profit || ""}
+                    onChange={e => setEditForm(f => ({ ...f, profit: e.target.value }))} />
+                </div>
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Due Date</label>
                   <input type="date" className={styles.formInput}
@@ -1030,25 +1116,77 @@ export default function SalesPage() {
                   </div>
                 )}
 
-                {/* Price & months */}
+                {/* Quantity */}
                 <div className={styles.formField}>
-                  <label className={styles.formLabel}>Total Price (₱) <span className={styles.req}>*</span></label>
-                  <input type="number" className={styles.formInput} value={apForm.totalPrice} required
-                    onChange={e => setApForm(f => ({ ...f, totalPrice: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label className={styles.formLabel}>Months to Pay <span className={styles.req}>*</span></label>
-                  <input type="number" className={styles.formInput} value={apForm.monthsToPay} required
-                    onChange={e => setApForm(f => ({ ...f, monthsToPay: e.target.value }))} />
+                  <label className={styles.formLabel}>Quantity <span className={styles.req}>*</span></label>
+                  <input type="number" min="1" className={styles.formInput} value={apForm.quantity} required
+                    onChange={e => setApForm(f => ({ ...f, quantity: e.target.value }))} />
                 </div>
 
-                {/* Auto monthly */}
-                <div className={styles.formField} style={{ gridColumn: "1 / -1" }}>
-                  <label className={styles.formLabel}>Monthly Payment (auto)</label>
-                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
-                    value={apComputed ? `₱ ${parseFloat(apComputed).toLocaleString()}` : "—"} readOnly />
+                {/* Payment Terms */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Payment Terms <span className={styles.req}>*</span></label>
+                  <select className={styles.formInput} value={apForm.paymentTerms}
+                    onChange={e => setApForm(f => ({ ...f, paymentTerms: e.target.value, downPayment: "", monthsToPay: "1" }))}>
+                    <option value="Cash">Cash</option>
+                    <option value="Layaway">Layaway</option>
+                  </select>
                 </div>
-                <div className={styles.formField} style={{ gridColumn: "1 / -1" }}>
+
+                {/* Layaway-only */}
+                {apForm.paymentTerms === "Layaway" && (<>
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Down Payment (₱) <span className={styles.req}>*</span></label>
+                    <input type="number" min="0" step="0.01" className={styles.formInput} value={apForm.downPayment} required
+                      onChange={e => setApForm(f => ({ ...f, downPayment: e.target.value }))} />
+                  </div>
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Months to Pay <span className={styles.req}>*</span></label>
+                    <select className={styles.formInput} value={apForm.monthsToPay}
+                      onChange={e => setApForm(f => ({ ...f, monthsToPay: e.target.value }))}>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                        <option key={m} value={m}>{m} {m === 1 ? "month" : "months"}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>)}
+
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Cost (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    value={apSelectedItem ? `₱ ${apCost.toLocaleString()}` : "—"} readOnly />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Sub Total (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    value={apSelectedItem ? `₱ ${apSubTotal.toLocaleString()}` : "—"} readOnly />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Discount (₱)</label>
+                  <input type="number" min="0" step="0.01" className={styles.formInput} value={apForm.discount}
+                    onChange={e => setApForm(f => ({ ...f, discount: e.target.value }))} />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Total Payable (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    value={apSelectedItem ? `₱ ${apTotalPayable.toLocaleString()}` : "—"} readOnly />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Profit (₱)</label>
+                  <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                    style={{ color: apProfit >= 0 ? "#4a8a50" : "#e05a3a" }}
+                    value={apSelectedItem ? `₱ ${apProfit.toLocaleString()}` : "—"} readOnly />
+                </div>
+
+                {apForm.paymentTerms === "Layaway" && (
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>Monthly Payment (auto)</label>
+                    <input type="text" className={`${styles.formInput} ${styles.formInputReadonly}`}
+                      value={apSelectedItem && apMonths > 0 ? `₱ ${apMonthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"} readOnly />
+                  </div>
+                )}
+
+                <div className={styles.formField}>
                   <label className={styles.formLabel}>Due Date <span className={styles.req}>*</span></label>
                   <input type="date" className={styles.formInput}
                     value={apForm.dueDate || defaultDueDateInput()}
@@ -1058,7 +1196,7 @@ export default function SalesPage() {
               </div>
               <div className={styles.formActions}>
                 <button type="button" className={styles.cancelBtn} onClick={closeAddProduct}>Cancel</button>
-                <button type="submit" className={styles.submitBtn} disabled={apSubmitting || !apComputed}>
+                <button type="submit" className={styles.submitBtn} disabled={apSubmitting || !apSelectedItem || apTotalPayable <= 0}>
                   {apSubmitting ? "Saving..." : "+ Add Product"}
                 </button>
               </div>
