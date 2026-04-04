@@ -285,6 +285,7 @@ export default function SalesPage() {
 
   const filteredPickerItems = useMemo(() => {
     return inventoryItems.filter(inv => {
+      if (inv.status === "Out of Stock" || inv.quantity <= 0) return false;
       const matchCat = itemPickerCategory === "All" || inv.category === itemPickerCategory;
       const matchSearch = !itemPickerSearch.trim() ||
         (inv.name || "").toLowerCase().includes(itemPickerSearch.toLowerCase()) ||
@@ -313,7 +314,7 @@ export default function SalesPage() {
     const body = {
       name:         quickAddForm.name.trim(),
       category:     quickAddForm.category.trim(),
-      status:       "In Stock",
+      status:       "Pre Order",
       quantity:     parseInt(quickAddForm.quantity) || 0,
       grams:        quickAddForm.grams !== "" ? parseFloat(quickAddForm.grams) : null,
       supplier:     quickAddForm.supplier.trim(),
