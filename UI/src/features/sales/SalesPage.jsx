@@ -121,6 +121,7 @@ export default function SalesPage() {
   const [showItemPicker, setShowItemPicker] = useState(false);   // which form: "add" | "addProduct" | "edit"
   const [itemPickerSearch, setItemPickerSearch] = useState("");
   const [itemPickerCategory, setItemPickerCategory] = useState("All");
+  const [itemPickerStatus, setItemPickerStatus] = useState("All");
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const QUICK_ADD_EMPTY = { name: "", category: "", quantity: "", grams: "", supplier: "", price: "", sellingPrice: "" };
   const [quickAddForm, setQuickAddForm] = useState(QUICK_ADD_EMPTY);
@@ -286,14 +287,15 @@ export default function SalesPage() {
   const filteredPickerItems = useMemo(() => {
     return inventoryItems.filter(inv => {
       if (inv.status === "Out of Stock" || inv.quantity <= 0) return false;
-      const matchCat = itemPickerCategory === "All" || inv.category === itemPickerCategory;
+      const matchCat    = itemPickerCategory === "All" || inv.category === itemPickerCategory;
+      const matchStatus = itemPickerStatus   === "All" || inv.status   === itemPickerStatus;
       const matchSearch = !itemPickerSearch.trim() ||
-        (inv.name || "").toLowerCase().includes(itemPickerSearch.toLowerCase()) ||
+        (inv.name     || "").toLowerCase().includes(itemPickerSearch.toLowerCase()) ||
         (inv.category || "").toLowerCase().includes(itemPickerSearch.toLowerCase()) ||
         (inv.supplier || "").toLowerCase().includes(itemPickerSearch.toLowerCase());
-      return matchCat && matchSearch;
+      return matchCat && matchStatus && matchSearch;
     });
-  }, [inventoryItems, itemPickerSearch, itemPickerCategory]);
+  }, [inventoryItems, itemPickerSearch, itemPickerCategory, itemPickerStatus]);
 
   const selectPickerItem = (inv) => {
     const autoPrice = String(inv.sellingPrice || inv.price || "");
@@ -822,17 +824,25 @@ export default function SalesPage() {
             <div className={styles.itemPickerControls}>
               <input
                 className={styles.itemPickerSearch}
-                placeholder="Search.."
+                placeholder="Search by name, category, supplier..."
                 value={itemPickerSearch}
                 onChange={e => setItemPickerSearch(e.target.value)}
                 autoFocus
               />
-              <select className={styles.itemPickerFilter} value={itemPickerCategory}
-                onChange={e => setItemPickerCategory(e.target.value)}>
-                {inventoryCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat === "All" ? "Show All" : cat}</option>
-                ))}
-              </select>
+              <div style={{ display:"flex", gap:"8px" }}>
+                <select className={styles.itemPickerFilter} style={{ flex:1 }} value={itemPickerCategory}
+                  onChange={e => setItemPickerCategory(e.target.value)}>
+                  {inventoryCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat === "All" ? "All Categories" : cat}</option>
+                  ))}
+                </select>
+                <select className={styles.itemPickerFilter} style={{ flex:1 }} value={itemPickerStatus}
+                  onChange={e => setItemPickerStatus(e.target.value)}>
+                  <option value="All">All Status</option>
+                  <option value="In Stock">In Stock</option>
+                  <option value="Pre Order">Pre Order</option>
+                </select>
+              </div>
               <button type="button" className={styles.quickAddBtn}
                 onClick={() => { setQuickAddForm(QUICK_ADD_EMPTY); setShowQuickAdd(true); }}>
                 ＋ Quick Add Product
@@ -849,7 +859,15 @@ export default function SalesPage() {
                     : <div className={styles.itemPickerImgPlaceholder}>📦</div>
                   }
                   <div className={styles.itemPickerInfo}>
-                    <div className={styles.itemPickerName}>{inv.name}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"4px" }}>
+                      <span className={styles.itemPickerName} style={{ marginBottom:0 }}>{inv.name}</span>
+                      <span style={{
+                        fontSize:"11px", fontWeight:600, padding:"2px 8px", borderRadius:"20px",
+                        background: inv.status === "In Stock" ? "#e2b22f" : "#c9c7c7",
+                        color: inv.status === "In Stock" ? "#fff" : "#555",
+                        whiteSpace:"nowrap"
+                      }}>{inv.status}</span>
+                    </div>
                     <div className={styles.itemPickerMeta}>
                       {inv.category && <span>{inv.category}</span>}
                       {inv.supplier && <span>Supplier: {inv.supplier}</span>}
@@ -939,8 +957,8 @@ export default function SalesPage() {
 
       {/* ══ Edit Loan Modal ═══════════════════════════════════════ */}
       {editLoan && (
-        <div className={styles.modalOverlay} onClick={closeEdit}>
-          <div className={styles.modalCard} onClick={e => e.stopPropagation()}>
+        <div className={styles.modalOverlay} /*onClick={closeEdit}*/>
+          <div className={styles.modalCard} /*onClick={e => e.stopPropagation()}*/>
             <h2 className={styles.modalTitle}>Edit Buyer</h2>
             <form onSubmit={handleEditSubmit}>
               <div className={styles.formGrid}>
@@ -1098,7 +1116,7 @@ export default function SalesPage() {
                 <div className={styles.formField} style={{ gridColumn: "1 / -1" }}>
                   <label className={styles.formLabel}>Item Purchased <span className={styles.req}>*</span></label>
                   <button type="button" className={styles.itemTriggerBtn}
-                    onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setShowItemPicker("addProduct"); }}>
+                    onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setItemPickerStatus("All"); setShowItemPicker("addProduct"); }}>
                     {apForm.item
                       ? <span>{apForm.item}</span>
                       : <span className={styles.itemTriggerPlaceholder}>— Select an item —</span>}
@@ -1220,7 +1238,7 @@ export default function SalesPage() {
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Item Purchased <span className={styles.req}>*</span></label>
                   <button type="button" className={styles.itemTriggerBtn}
-                    onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setShowItemPicker("add"); }}>
+                    onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setItemPickerStatus("All"); setShowItemPicker("add"); }}>
                     {form.item
                       ? <span>{form.item}</span>
                       : <span className={styles.itemTriggerPlaceholder}>— Select an item —</span>}
