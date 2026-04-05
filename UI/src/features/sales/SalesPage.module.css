@@ -253,13 +253,17 @@
 .tableHeader,
 .row {
   display: grid;
-  grid-template-columns: 1.8fr 1.4fr 110px 110px 110px 110px 120px 110px;
+  grid-template-columns: 1.6fr 1.8fr 110px 110px 110px 110px 120px 127px;
   align-items: center;
   column-gap: 10px;
 }
 
 .tableHeader {
-  padding: 12px 18px;
+  display: grid;
+  grid-template-columns: 1.6fr 1.8fr 110px 110px 110px 110px 120px 127px;
+  align-items: center;
+  column-gap: 10px;
+  padding: 12px 16px;
   color: #7a756f;
   font-size: 13px;
   font-weight: 500;
@@ -299,7 +303,9 @@
   font-size: 13px;
   font-weight: 600;
   color: #2e2e2e;
+  text-align: center;
 }
+
 
 .partialThisMonth { color: #e07a3a; }
 .paidThisMonth    { color: #2a9d8f; font-size: 12px; }
@@ -307,6 +313,11 @@
 .colPurchased { font-size: 12px; color: #777; }
 
 .colDue { font-size: 12px; color: #777; }
+
+.tableHeader .colTotal,
+.tableHeader .colMonthly,
+.tableHeader .colBalance,
+.tableHeader .colPayableMonth { text-align: center; }
 
 /* ── Pagination ─────────────────────────────────────────────────── */
 .pagination {
