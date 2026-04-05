@@ -112,7 +112,7 @@ export default function SalesPage() {
   const [payModal, setPayModal]           = useState(null); // loan object when open
   const [payAmount, setPayAmount]         = useState("");
   const [payNotes, setPayNotes]           = useState("");
-  const [notesModal, setNotesModal]       = useState(null); // loan object when open
+  const [historyModal, setHistoryModal]   = useState(null); // loan object when open
   const [sortCol, setSortCol]             = useState(null);   // "buyer" | "item" | null
   const [sortDir, setSortDir]             = useState("asc");  // "asc" | "desc"
   const [selectedItem, setSelectedItem]   = useState(null);
@@ -539,6 +539,7 @@ export default function SalesPage() {
       totalPrice:       String(loan.totalPrice    ?? ""),
       monthlyPayment:   String(loan.monthlyPayment ?? ""),
       remainingBalance: String(loan.remainingBalance ?? ""),
+      subTotal:         String(loan.subTotal        ?? ""),
       profit:           String(loan.profit         ?? ""),
       dueDate:          loan.dueDate          || "",
       status:           loan.status           || "Active",
@@ -546,6 +547,20 @@ export default function SalesPage() {
   };
 
   const closeEdit = () => { setEditLoan(null); setEditForm({}); };
+
+  // Computed vars for Edit Buyer modal (derived, not stored in editForm)
+  const editSelectedItem  = useMemo(() => inventoryItems.find(i => i.name === editForm.item) || null, [inventoryItems, editForm.item]);
+  const editCost          = editSelectedItem?.price || 0;
+  // Use manually entered subTotal if set, otherwise fall back to item's sellingPrice
+  const editSubTotal      = parseFloat(editForm.subTotal) || editSelectedItem?.sellingPrice || 0;
+  const editDiscount      = Math.max(0, parseFloat(editForm.discount)    || 0);
+  const editDownPayment   = Math.max(0, parseFloat(editForm.downPayment) || 0);
+  const editTotalPayable  = Math.max(0, editSubTotal - editDiscount);
+  const editProfit        = editTotalPayable - editCost;
+  const editMonths        = parseInt(editForm.monthsToPay) || 1;
+  const editMonthly       = editForm.paymentTerms === "Cash"
+    ? (parseFloat(editForm.remainingBalance) || editTotalPayable)
+    : editMonths > 0 ? (editTotalPayable - editDownPayment) / editMonths : 0;
 
   const handleDelete = (loan) => {
     if (!window.confirm(`Delete sale record for "${loan.customerName} — ${loan.item}"?\nThis cannot be undone.`)) return;
@@ -560,20 +575,16 @@ export default function SalesPage() {
   const handleEditSubmit = (e) => {
     e.preventDefault();
     setEditSubmitting(true);
-    const months  = parseInt(editForm.monthsToPay) || 1;
-    const price   = parseFloat(editForm.totalPrice) || 0;
-    const monthly = editForm.paymentTerms === "Cash"
-      ? price
-      : months > 0 ? parseFloat((price / months).toFixed(2)) : parseFloat(editForm.monthlyPayment);
     const body = {
       ...editForm,
-      totalPrice:       price,
-      monthsToPay:      editForm.paymentTerms === "Cash" ? 1 : months,
-      monthlyPayment:   monthly,
+      totalPrice:       parseFloat(editTotalPayable.toFixed(2)),
+      monthsToPay:      editForm.paymentTerms === "Cash" ? 1 : editMonths,
+      monthlyPayment:   parseFloat(editMonthly.toFixed(2)),
       remainingBalance: parseFloat(editForm.remainingBalance),
-      discount:         parseFloat(editForm.discount) || 0,
-      downPayment:      parseFloat(editForm.downPayment) || 0,
-      profit:           parseFloat(editForm.profit) || 0,
+      discount:         editDiscount,
+      downPayment:      editDownPayment,
+      profit:           parseFloat(editProfit.toFixed(2)),
+      subTotal:         parseFloat(editSubTotal.toFixed(2)),
     };
     fetch(`${API_BASE}/api/sales/${editLoan.id}`, {
       method: "PUT",
@@ -701,7 +712,6 @@ export default function SalesPage() {
             </div>
 
             <div className={styles.tableHeader}>
-              <div className={styles.colCheck}><input type="checkbox" /></div>
               <div className={`${styles.colBuyer} ${styles.sortableCol}`} onClick={() => handleSort("buyer")}>Buyer {sortIcon("buyer")}</div>
               <div className={`${styles.colItem} ${styles.sortableCol}`} onClick={() => handleSort("item")}>Item {sortIcon("item")}</div>
               <div className={`${styles.colTotal} ${styles.sortableCol}`} onClick={() => handleSort("totalPrice")}>Total Price {sortIcon("totalPrice")}</div>
@@ -720,17 +730,10 @@ export default function SalesPage() {
                 const isPaid = loan.status === "Paid";
                 return (
                   <div key={loan.id} className={`${styles.row} ${isPaid ? styles.rowPaid : ""}`}>
-                    <div className={styles.colCheck}><input type="checkbox" /></div>
                     <div className={styles.colBuyer}>
                       <div className={styles.buyerName}>{loan.customerName}</div>
                       {loan.facebookName && <div className={styles.buyerFb}>fb: {loan.facebookName}</div>}
                       {loan.mobileNumber && <div className={styles.buyerMobile}>📱 {loan.mobileNumber}</div>}
-                      {loan.paymentNotes && (
-                        <div className={styles.buyerNotes} onClick={() => setNotesModal(loan)} title="Click to view all notes">
-                          📝 {loan.paymentNotes.split("|||")[0]}
-                          {loan.paymentNotes.split("|||").length > 1 && <span className={styles.notesMore}> +{loan.paymentNotes.split("|||").length - 1} more</span>}
-                        </div>
-                      )}
                     </div>
                     <div className={styles.colItem}>
                       {itemImageMap[loan.item] && (
@@ -760,6 +763,7 @@ export default function SalesPage() {
                     <div className={styles.colBalance}>₱{(loan.remainingBalance || 0).toLocaleString()}</div>
                     <div className={styles.colDue}>{loan.dueDate}</div>
                     <div className={styles.colAction}>
+                      <button className={styles.infoBtn} onClick={() => setHistoryModal(loan)} title="View History">ℹ</button>
                       {isAdmin()        && <button className={styles.editBtn}   onClick={() => openEdit(loan)}    title="Edit">✎</button>}
                       {canDeleteSales() && <button className={styles.deleteBtn} onClick={() => handleDelete(loan)} title="Delete">🗑</button>}
                       {isPaid ? (
@@ -1035,30 +1039,118 @@ export default function SalesPage() {
         </div>
       )}
 
-      {/* ══ Notes Viewer Modal ═══════════════════════════════════ */}
-      {notesModal && (
-        <div className={styles.quickAddOverlay} onClick={() => setNotesModal(null)}>
-          <div className={styles.notesViewCard} onClick={e => e.stopPropagation()}>
-            <div className={styles.itemPickerHeader}>
-              <div>
-                <h3 className={styles.itemPickerTitle}>Payment Notes</h3>
-                <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
-                  {notesModal.customerName} · {notesModal.item}
+
+      {/* ══ History Modal ════════════════════════════════════════ */}
+      {historyModal && (() => {
+        const h = loans.find(l => l.id === historyModal.id) || historyModal;
+        return (
+          <div key="history-modal" className={styles.quickAddOverlay} onClick={() => setHistoryModal(null)}>
+            <div className={styles.historyCard} onClick={e => e.stopPropagation()}>
+              <div className={styles.historyHeader}>
+                <div>
+                  <div className={styles.historyTitle}>📋 Item History</div>
+                  <div className={styles.historySubtitle}>{h.customerName} · <strong>{h.item}</strong></div>
+                </div>
+                <button className={styles.itemPickerClose} onClick={() => setHistoryModal(null)}>✕</button>
+              </div>
+
+              <div className={styles.historySummary}>
+                <div className={styles.historySummaryRow}>
+                  <span className={styles.historySummaryLabel}>Payment Terms</span>
+                  <span className={styles.historySummaryVal}>{h.paymentTerms || "—"}</span>
+                </div>
+                <div className={styles.historySummaryRow}>
+                  <span className={styles.historySummaryLabel}>Total Payable</span>
+                  <span className={styles.historySummaryVal}>₱{(h.totalPrice || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                </div>
+                {h.paymentTerms === "Layaway" && (() => {
+                  const dueThisMonth = Math.max(0, (h.monthlyPayment || 0) - (h.paidThisMonth || 0));
+                  return (<>
+                    <div className={styles.historySummaryRow}>
+                      <span className={styles.historySummaryLabel}>Monthly</span>
+                      <span className={styles.historySummaryVal}>₱{(h.monthlyPayment || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                    </div>
+                    <div className={styles.historySummaryRow}>
+                      <span className={styles.historySummaryLabel}>Due This Month</span>
+                      <span className={styles.historySummaryVal} style={{color: dueThisMonth === 0 ? "#2a9d8f" : "#e07a3a"}}>
+                        {dueThisMonth === 0 ? "✓ Paid" : `₱${dueThisMonth.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`}
+                      </span>
+                    </div>
+                  </>);
+                })()}
+                <div className={styles.historySummaryRow}>
+                  <span className={styles.historySummaryLabel}>Remaining</span>
+                  <span className={styles.historySummaryVal} style={{color:"#e05a3a"}}>₱{(h.remainingBalance || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                </div>
+                <div className={styles.historySummaryRow}>
+                  <span className={styles.historySummaryLabel}>Status</span>
+                  <span className={`${styles.historySummaryVal} ${h.status === "Paid" ? styles.historyStatusPaid : styles.historyStatusActive}`}>
+                    {h.status}
+                  </span>
+                </div>
+                <div className={styles.historySummaryRow}>
+                  <span className={styles.historySummaryLabel}>Due Date</span>
+                  <span className={styles.historySummaryVal}>{h.dueDate || "—"}</span>
                 </div>
               </div>
-              <button className={styles.itemPickerClose} onClick={() => setNotesModal(null)}>✕</button>
-            </div>
-            <div className={styles.notesViewBody}>
-              {notesModal.paymentNotes.split("|||").map((line, i) => (
-                <div key={i} className={styles.notesViewEntry}>
-                  <span className={styles.notesViewIcon}>📝</span>
-                  <span>{line}</span>
-                </div>
-              ))}
+
+              <div className={styles.historyTimelineLabel}>Activity Log</div>
+              <div className={styles.historyTimeline}>
+                {h.paymentNotes
+                  ? h.paymentNotes.split("|||").map((entry, i) => {
+                      // New payment format: "[date] 💳 Payment ₱X.XX by user — note"
+                      const payMatch  = entry.match(/^\[(.+?)\]\s*💳\s*Payment\s*(₱[\d,.]+)\s*by\s+(\S+)(?:\s*—\s*(.*))?$/);
+                      // New edit format:    "[date] ✏️ Edited by user: details"
+                      const editMatch = entry.match(/^\[(.+?)\]\s*✏️\s*Edited by (.+?):\s*(.*)$/);
+                      // Legacy format:      "[date] ₱X — note"
+                      const legacyMatch = entry.match(/^\[(.+?)\]\s*(₱[\d,.]+)\s*—\s*(.*)$/);
+
+                      const isEdit = !!editMatch;
+                      return (
+                        <div key={i} className={styles.historyEntry}>
+                          <div className={`${styles.historyEntryDot} ${isEdit ? styles.historyEntryDotEdit : ""}`} />
+                          <div className={styles.historyEntryBody}>
+                            {payMatch ? (
+                              <>
+                                <div className={styles.historyEntryMeta}>
+                                  <span className={styles.historyEntryAmount}>💳 {payMatch[2]}</span>
+                                  <span className={styles.historyEntryTime}>{payMatch[1]}</span>
+                                </div>
+                                <div className={styles.historyEntryNote}>
+                                  by <strong>{payMatch[3]}</strong>
+                                  {payMatch[4] && <> — {payMatch[4]}</>}
+                                </div>
+                              </>
+                            ) : editMatch ? (
+                              <>
+                                <div className={styles.historyEntryMeta}>
+                                  <span className={styles.historyEntryEdit}>✏️ Edited by {editMatch[2]}</span>
+                                  <span className={styles.historyEntryTime}>{editMatch[1]}</span>
+                                </div>
+                                <div className={styles.historyEntryNote}>{editMatch[3]}</div>
+                              </>
+                            ) : legacyMatch ? (
+                              <>
+                                <div className={styles.historyEntryMeta}>
+                                  <span className={styles.historyEntryAmount}>{legacyMatch[2]}</span>
+                                  <span className={styles.historyEntryTime}>{legacyMatch[1]}</span>
+                                </div>
+                                {legacyMatch[3] && <div className={styles.historyEntryNote}>{legacyMatch[3]}</div>}
+                              </>
+                            ) : (
+                              <div className={styles.historyEntryNote}>{entry}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  : <div className={styles.historyEmpty}>No activity recorded yet.</div>
+                }
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ══ Image Lightbox ════════════════════════════════════════ */}
       {lightboxImg && (
@@ -1075,19 +1167,31 @@ export default function SalesPage() {
             <h2 className={styles.modalTitle}>Edit Buyer</h2>
             <form onSubmit={handleEditSubmit}>
               <div className={styles.formGrid}>
-                {["customerName","facebookName","mobileNumber"].map(key => (
-                  <div key={key} className={styles.formField}>
-                    <label className={styles.formLabel}>
-                      {key === "customerName" ? "Customer Name" : key === "facebookName" ? "Facebook Name" : "Mobile Number"}
-                    </label>
-                    <input type="text" className={styles.formInput}
-                      value={editForm[key] || ""}
-                      onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))} />
-                  </div>
-                ))}
+                {/* Customer Name — required */}
                 <div className={styles.formField}>
-                  <label className={styles.formLabel}>Item Purchased</label>
-                  <button type="button" className={styles.itemTriggerBtn}
+                  <label className={styles.formLabel}>Customer Name *</label>
+                  <input type="text" className={styles.formInput} required
+                    value={editForm.customerName || ""}
+                    onChange={e => setEditForm(f => ({ ...f, customerName: e.target.value }))} />
+                </div>
+                {/* Facebook Name */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Facebook Name</label>
+                  <input type="text" className={styles.formInput}
+                    value={editForm.facebookName || ""}
+                    onChange={e => setEditForm(f => ({ ...f, facebookName: e.target.value }))} />
+                </div>
+                {/* Mobile Number — required */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Mobile Number *</label>
+                  <input type="text" className={styles.formInput} required
+                    value={editForm.mobileNumber || ""}
+                    onChange={e => setEditForm(f => ({ ...f, mobileNumber: e.target.value }))} />
+                </div>
+                {/* Item Purchased — required */}
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Item Purchased *</label>
+                  <button type="button" className={`${styles.itemTriggerBtn} ${!editForm.item ? styles.itemTriggerRequired : ""}`}
                     onClick={() => { setItemPickerSearch(""); setItemPickerCategory("All"); setShowItemPicker("edit"); }}>
                     {editForm.item
                       ? <span>{editForm.item}</span>
@@ -1107,14 +1211,13 @@ export default function SalesPage() {
                 )}
                 {/* Payment Terms */}
                 <div className={styles.formField}>
-                  <label className={styles.formLabel}>Payment Terms</label>
+                  <label className={styles.formLabel}>Payment Terms *</label>
                   <select className={styles.formInput} value={editForm.paymentTerms || "Cash"}
                     onChange={e => setEditForm(f => ({ ...f, paymentTerms: e.target.value, downPayment: "0", monthsToPay: "1" }))}>
                     <option value="Cash">Cash</option>
                     <option value="Layaway">Layaway</option>
                   </select>
                 </div>
-
                 {/* Discount */}
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Discount (₱)</label>
@@ -1122,8 +1225,7 @@ export default function SalesPage() {
                     value={editForm.discount || "0"}
                     onChange={e => setEditForm(f => ({ ...f, discount: e.target.value }))} />
                 </div>
-
-                {/* Layaway-only */}
+                {/* Layaway-only fields */}
                 {editForm.paymentTerms === "Layaway" && (<>
                   <div className={styles.formField}>
                     <label className={styles.formLabel}>Down Payment (₱)</label>
@@ -1141,30 +1243,42 @@ export default function SalesPage() {
                     </select>
                   </div>
                 </>)}
-
+                {/* Auto-calculated readonly fields */}
                 <div className={styles.formField}>
-                  <label className={styles.formLabel}>Total Payable (₱)</label>
-                  <input type="number" min="0" step="0.01" className={styles.formInput}
-                    value={editForm.totalPrice || ""}
-                    onChange={e => setEditForm(f => ({ ...f, totalPrice: e.target.value }))} />
+                  <label className={styles.formLabel}>Cost (₱)</label>
+                  <input type="text" className={styles.formInput} readOnly
+                    value={editSelectedItem ? `₱ ${editCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"} />
                 </div>
                 <div className={styles.formField}>
-                  <label className={styles.formLabel}>Monthly Payment (₱)</label>
+                  <label className={styles.formLabel}>Sub Total (₱)</label>
                   <input type="number" min="0" step="0.01" className={styles.formInput}
-                    value={editForm.monthlyPayment || ""}
-                    onChange={e => setEditForm(f => ({ ...f, monthlyPayment: e.target.value }))} />
+                    value={editForm.subTotal}
+                    onChange={e => setEditForm(f => ({ ...f, subTotal: e.target.value }))} />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>Total Payable (₱)</label>
+                  <input type="text" className={styles.formInput} readOnly
+                    value={editSelectedItem || editForm.subTotal ? `₱ ${editTotalPayable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"} />
+                </div>
+                <div className={styles.formField}>
+                  <label className={styles.formLabel}>
+                    {editForm.paymentTerms === "Cash" ? "Amount Due (Cash)" : "Monthly Payment (auto)"}
+                  </label>
+                  <input type="text" className={styles.formInput} readOnly
+                    value={editSelectedItem || editForm.subTotal
+                      ? `₱ ${editMonthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : "—"} />
                 </div>
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Remaining Balance (₱)</label>
                   <input type="number" min="0" step="0.01" className={styles.formInput}
-                    value={editForm.remainingBalance || ""}
+                    value={editForm.remainingBalance}
                     onChange={e => setEditForm(f => ({ ...f, remainingBalance: e.target.value }))} />
                 </div>
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Profit (₱)</label>
-                  <input type="number" step="0.01" className={styles.formInput}
-                    value={editForm.profit || ""}
-                    onChange={e => setEditForm(f => ({ ...f, profit: e.target.value }))} />
+                  <input type="text" className={styles.formInput} readOnly
+                    value={editSelectedItem ? `₱ ${editProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"} />
                 </div>
                 <div className={styles.formField}>
                   <label className={styles.formLabel}>Due Date</label>
@@ -1183,7 +1297,7 @@ export default function SalesPage() {
               </div>
               <div className={styles.formActions}>
                 <button type="button" className={styles.cancelBtn} onClick={closeEdit}>Cancel</button>
-                <button type="submit" className={styles.submitBtn} disabled={editSubmitting}>
+                <button type="submit" className={styles.submitBtn} disabled={editSubmitting || !editForm.item}>
                   {editSubmitting ? "Saving..." : "Save Changes"}
                 </button>
               </div>

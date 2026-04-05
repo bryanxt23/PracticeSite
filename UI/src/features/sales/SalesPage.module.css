@@ -253,7 +253,7 @@
 .tableHeader,
 .row {
   display: grid;
-  grid-template-columns: 36px 1.8fr 1.4fr 110px 110px 110px 110px 120px 90px;
+  grid-template-columns: 1.8fr 1.4fr 110px 110px 110px 110px 120px 110px;
   align-items: center;
   column-gap: 10px;
 }
@@ -683,6 +683,7 @@ input[type="checkbox"] {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
+  padding-right: 10px;
 }
 
 .cancelBtn {
@@ -1217,3 +1218,124 @@ input[type="checkbox"] {
 .buyerNotes { cursor: pointer; }
 .buyerNotes:hover { color: #c8922a; }
 .notesMore { color: #c8922a; font-weight: 600; }
+
+/* ── Info / History button ──────────────────────────────────── */
+.infoBtn {
+  border: 1.5px solid #b8d4f0;
+  background: transparent;
+  color: #4a90d9;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  margin-right: 6px;
+}
+.infoBtn:hover { background: #e8f1fb; color: #2a6fb0; }
+
+/* ── History Modal ──────────────────────────────────────────── */
+.historyCard {
+  background: #fff;
+  border-radius: 20px;
+  width: 500px;
+  max-width: 96vw;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+
+.historyHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid #f0ede6;
+}
+.historyTitle    { font-size: 17px; font-weight: 700; color: #1e1e1e; }
+.historySubtitle { font-size: 13px; color: #7a7570; margin-top: 2px; }
+
+/* Summary grid */
+.historySummary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+  padding: 14px 24px;
+  background: #faf9f6;
+  border-bottom: 1px solid #f0ede6;
+}
+.historySummaryRow   { display: flex; flex-direction: column; gap: 1px; }
+.historySummaryLabel { font-size: 11px; color: #9a9590; text-transform: uppercase; letter-spacing: 0.04em; }
+.historySummaryVal   { font-size: 14px; font-weight: 600; color: #2e2e2e; }
+.historyStatusPaid   { color: #2a9d8f !important; }
+.historyStatusActive { color: #c8922a !important; }
+
+/* Timeline */
+.historyTimelineLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #9a9590;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 14px 24px 8px;
+}
+.historyTimeline {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.historyEntry {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  position: relative;
+  padding-bottom: 14px;
+}
+.historyEntry:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 18px;
+  bottom: 0;
+  width: 2px;
+  background: #ede9e0;
+}
+.historyEntryDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #c8922a;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #e8d5b0;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.historyEntryBody {
+  flex: 1;
+  background: #fafaf7;
+  border: 1px solid #ede9e0;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.historyEntryMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.historyEntryAmount    { font-size: 15px; font-weight: 700; color: #2a9d8f; }
+.historyEntryEdit      { font-size: 13px; font-weight: 700; color: #7a70d8; }
+.historyEntryTime      { font-size: 11px; color: #9a9590; }
+.historyEntryNote      { font-size: 13px; color: #555; margin-top: 4px; }
+.historyEntryDotEdit   { background: #7a70d8 !important; box-shadow: 0 0 0 2px #d8d5f5 !important; }
+.historyEmpty          { font-size: 13px; color: #aaa; padding: 16px 0; text-align: center; }
