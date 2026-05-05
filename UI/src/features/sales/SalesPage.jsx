@@ -132,6 +132,8 @@ export default function SalesPage() {
   const [quickAddSubmitting, setQuickAddSubmitting] = useState(false);
   const [apSubmitting, setApSubmitting]   = useState(false);
   const [dueFilters, setDueFilters]       = useState([]);  // "Today" | "7 days" | "30 days" | "12 months"
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo]     = useState("");
   const [searchText, setSearchText]       = useState("");
   const [paymentStats, setPaymentStats]   = useState({ thisDay: 0, thisMonth: 0, thisYear: 0 });
 
@@ -222,6 +224,30 @@ export default function SalesPage() {
       });
     }
 
+    // Created date filter
+    // purchaseDate is stored as "MMM d, yyyy" (e.g. "Apr 5, 2026") — parse it reliably
+    const parsePurchaseDate = str => {
+      if (!str) return null;
+      const MONTHS = { Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11 };
+      const m = str.match(/^(\w{3})\s+(\d{1,2}),\s+(\d{4})$/);
+      if (m && MONTHS[m[1]] !== undefined)
+        return new Date(parseInt(m[3]), MONTHS[m[1]], parseInt(m[2]));
+      const fallback = new Date(str);
+      return isNaN(fallback) ? null : fallback;
+    };
+
+    if (createdFrom || createdTo) {
+      const from = createdFrom ? new Date(createdFrom + "T00:00:00") : null;
+      const to   = createdTo   ? new Date(createdTo   + "T23:59:59") : null;
+      list = list.filter(l => {
+        const d = parsePurchaseDate(l.purchaseDate);
+        if (!d) return false;
+        if (from && d < from) return false;
+        if (to   && d > to)   return false;
+        return true;
+      });
+    }
+
     // Sort
     const dir = sortDir === "asc" ? 1 : -1;
     if      (sortCol === "buyer")   list = [...list].sort((a, b) => dir * (a.customerName || "").localeCompare(b.customerName || ""));
@@ -230,7 +256,7 @@ export default function SalesPage() {
     else if (sortCol)               list = [...list].sort((a, b) => dir * ((a[sortCol] || 0) - (b[sortCol] || 0)));
     else                            list = [...list].sort((a, b) => (b.id || 0) - (a.id || 0));
     return list;
-  }, [loans, activeTab, sortCol, sortDir, searchText, dueFilters]);
+  }, [loans, activeTab, sortCol, sortDir, searchText, dueFilters, createdFrom, createdTo]);
 
   // ── Due counts from all active loans ──────────────────────────
   const dueCounts = useMemo(() => {
@@ -845,8 +871,27 @@ export default function SalesPage() {
               ))}
             </div>
           </div>
+          <div className={styles.filterCard}>
+            <div className={styles.cardTop}><span className={styles.cardTitle}>Created Date</span></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 12, color: "#6b6763" }}>From</span>
+                <input type="date" className={styles.searchInput}
+                  style={{ background: "rgba(255,255,255,0.72)", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, padding: "6px 10px", width: "100%", boxSizing: "border-box" }}
+                  value={createdFrom}
+                  onChange={e => { setCreatedFrom(e.target.value); setPage(0); }} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 12, color: "#6b6763" }}>To</span>
+                <input type="date" className={styles.searchInput}
+                  style={{ background: "rgba(255,255,255,0.72)", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, padding: "6px 10px", width: "100%", boxSizing: "border-box" }}
+                  value={createdTo}
+                  onChange={e => { setCreatedTo(e.target.value); setPage(0); }} />
+              </div>
+            </div>
+          </div>
           <button className={styles.applyBtn}
-            onClick={() => { setDueFilters([]); setSearchText(""); setPage(0); }}>
+            onClick={() => { setDueFilters([]); setCreatedFrom(""); setCreatedTo(""); setSearchText(""); setPage(0); }}>
             Clear Filters
           </button>
         </aside>
@@ -1091,6 +1136,10 @@ export default function SalesPage() {
                 <div className={styles.historySummaryRow}>
                   <span className={styles.historySummaryLabel}>Due Date</span>
                   <span className={styles.historySummaryVal}>{h.dueDate || "—"}</span>
+                </div>
+                <div className={styles.historySummaryRow}>
+                  <span className={styles.historySummaryLabel}>Created Date</span>
+                  <span className={styles.historySummaryVal}>{h.purchaseDate || "—"}</span>
                 </div>
               </div>
 
