@@ -89,12 +89,14 @@ export default function InventoryPage() {
     fetch(`${API}/api/inventory`)
       .then(r => r.json()).then(d => setItems(Array.isArray(d) ? d : [])).catch(() => {});
     fetch(`${API}/api/categories`)
-      .then(r => r.json()).then(d => Array.isArray(d) && setCategories(d)).catch(() => {});
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setCategories(Array.isArray(d) ? d.filter(Boolean) : []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => { setPage(0); }, [activeTab, selectedCategories, selectedStatuses, search, sortCol, sortDir]);
 
-  const catNames = useMemo(() => categories.map(c => c.name), [categories]);
+  const catNames = useMemo(() => categories.filter(c => c && c.id != null && c.name).map(c => c.name), [categories]);
 
   const counts = useMemo(() => ({
     inStock:    items.filter(i => i.status === "In Stock").length,
@@ -299,11 +301,11 @@ export default function InventoryPage() {
           <div className={styles.filterCard}>
             <div className={styles.cardTop}><span className={styles.cardTitle}>Category</span></div>
             <div className={styles.optionList}>
-              {categories.map(cat => (
+              {categories.filter(c => c && c.id != null).map(cat => (
                 <div key={cat.id} className={styles.catRow}>
-                  {editCat?.id === cat.id ? (
+                  {editCat != null && editCat.id === cat.id ? (
                     <div className={styles.catEditRow}>
-                      <input autoFocus className={styles.catEditInput} value={editCat.name}
+                      <input autoFocus className={styles.catEditInput} value={editCat.name ?? ""}
                         onChange={e => setEditCat(c => ({ ...c, name: e.target.value }))}
                         onKeyDown={e => { if (e.key === "Enter") renameCategory(cat); if (e.key === "Escape") setEditCat(null); }} />
                       <button className={styles.catSaveBtn} onClick={() => renameCategory(cat)}>✓</button>
